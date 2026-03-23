@@ -1,8 +1,8 @@
 ################# CSC258 Assembly Final Project ###################
 # This file contains our implementation of Columns.
 #
-# Student 1: Victor Li 1010863978
-# Student 2: Name, Student Number (if applicable)
+# Student 1: Victor Li, 1010863978
+# Student 2: Shahmeer Khan, 1011049410
 #
 # We assert that the code submitted here is entirely our own 
 # creation, and will indicate otherwise when it is not.
@@ -60,6 +60,8 @@ ACTIVE_COLUMN:
 
     # Run the game.
 main:
+	la $a0, ACTIVE_COLUMN
+	jal generate_drop_column
     j game_loop
     j Exit
     # Initialize the game
@@ -95,14 +97,35 @@ paint_border:
     mult $t0, $t1
     mflo $t0
     add $a0, $a0, $t0
-    addi $a0, $a0, -128
     jal draw_horizontal_line
     
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
-    
+# t6: row counter
+paint_background:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    add $t6, $zero, $zero # row counter
+paint_bg_row_loop:
+    beq $t6, HEIGHT, end_paint_background
+    addi $t7, $zero, 128
+    mult $t7, $t6
+    mflo $t7
+    lw $a0, ADDR_COLUMNS # intializing first argument for starting point (beginning of row)
+    add $a0, $a0, $t7
+    addi $a0, $a0, 4 # skip left border pixel
+    li $a1, WIDTH # setting second argument to width
+    li $a2, 0x000000 # setting third argument to black
+    jal draw_horizontal_line
+    addi $t6, $t6, 1
+    j paint_bg_row_loop
+end_paint_background:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
 # $a0: starting pixel
 # $a1: height
 # $a2: color
@@ -146,8 +169,6 @@ generate_random_color:
     add $t1, $t1, $t0
     lw $v0, 0($t1)
     jr $ra
-
-    
 
 # a0: column data address
 # store base column data in ACTIVE_COLUMN
@@ -205,21 +226,67 @@ draw_drop_column:
     
 game_loop:
     # 1a. Check if key has been pressed
+    lw $t0, ADDR_KBRD
+    lw $t8, 0($t0)
     # 1b. Check which key has been pressed
+    beq $t8, 1, keyboard_input
+    j no_key
     # 2a. Check for collisions
 	# 2b. Update locations (capsules)
 	# 3. Draw the screen
-	jal paint_border
-	la $a0, ACTIVE_COLUMN
-	jal generate_drop_column
+	# 4. Sleep
+    # 5. Go back to Step 1
+
+keyboard_input:
+    # check which key was pressed
+    lw $t2, 4($t0)
+    beq $t2, 0x61, move_left  # 'a'
+    beq $t2, 0x64, move_right # 'd'
+    beq $t2, 0x73, move_down  # 's'
+    beq $t2, 0x77, shuffle    # 'w'
+    beq $t2, 0x71, Exit       # 'q'
+    j no_key                  # also ignore unknown key
+
+move_left:
+    lw $t1, ACTIVE_COLUMN # load x value
+    addi $t1, $t1, -1 # subtract 1 from x
+    sw $t1, ACTIVE_COLUMN # update x value
+    j no_key
+
+move_right:
+    lw $t1, ACTIVE_COLUMN # load x value
+    addi $t1, $t1, 1 # add 1 to x
+    sw $t1, ACTIVE_COLUMN # update x value
+    j no_key
+
+move_down:
+    lw $t1, ACTIVE_COLUMN + 4 # load y value
+    addi $t1, $t1, 1 # add 1 to y
+    sw $t1, ACTIVE_COLUMN + 4 # update y value
+    j no_key
+
+shuffle:
+    lw $t1, ACTIVE_COLUMN + 8 # load top colour
+    lw $t2, ACTIVE_COLUMN + 12 # load middle colour
+    lw $t3, ACTIVE_COLUMN + 16 # load bottom colour
+    # swapping:
+    sw $t1, ACTIVE_COLUMN + 12 
+    sw $t2, ACTIVE_COLUMN + 16
+    sw $t3, ACTIVE_COLUMN + 8
+    
+    j no_key
+    
+no_key:
+    jal paint_background # wipe screen
+	jal paint_border # redraw borders
 	la $a0, ACTIVE_COLUMN
 	la $a1, ADDR_COLUMNS
-	jal draw_drop_column
-	# 4. Sleep
-
-    # 5. Go back to Step 1
-    j game_loop
-
+	jal draw_drop_column # draw column at new position
+	li $v0, 32
+	li $a0, 16
+	syscall
+	j game_loop
+	
 Exit:
     li $v0, 10 # terminate the program gracefully
     syscall
