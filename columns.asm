@@ -52,6 +52,8 @@ ACTIVE_COLUMN:
     .word 0xffffff # Top color
     .word 0xffffff # middle color
     .word 0xffffff # bottom color
+ACTIVE_GAME_SPACE:
+    .space 512
 ##############################################################################
 # Code
 ##############################################################################
@@ -72,30 +74,36 @@ main:
 paint_border:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
+    
+    # draw left border
     lw $a0, ADDR_COLUMNS
     li $a1, HEIGHT
     lw $a2, WHITE
-    # draw left border
     jal draw_vertical_line
+    
     # draw right border
     lw $a0, ADDR_COLUMNS
-    # set right endpoint
+    li $a1, HEIGHT
+    lw $a2, WHITE
     addi $t0, $zero, WIDTH
-    addi $t1, $zero, 4
-    mult $t0, $t1
-    mflo $t0
+    sll $t0, $t0, 2
     add $a0, $a0, $t0
     jal draw_vertical_line
+    
     # draw top border
     lw $a0, ADDR_COLUMNS
     li $a1, WIDTH
+    lw $a2, WHITE
     jal draw_horizontal_line
+    
+    
     # draw bottom border
     lw $a0, ADDR_COLUMNS
+    li $a1, WIDTH
+    lw $a2, WHITE
     addi $t0, $zero, HEIGHT
-    addi $t1, $zero, 128
-    mult $t0, $t1
-    mflo $t0
+    addi $t0, $t0, -1
+    sll $t0, $t0, 7
     add $a0, $a0, $t0
     jal draw_horizontal_line
     
@@ -189,9 +197,7 @@ generate_drop_column:
     sw $s2, 16($a0)
     # initialize to default position 
     addi $t3, $zero, WIDTH
-    addi $t4, $zero, 2
-    div $t3, $t4
-    mflo $t3
+    srl $t3, $t3, 2
     sw $t3, 0($a0)
     addi $t5, $zero, 1
     sw $t5, 4($a0)
@@ -206,12 +212,14 @@ draw_drop_column:
     lw $t0, 0($a1)
     lw $t1, 0($a0) # xpos
     lw $t2, 4($a0) # ypos
-    li $t3, 4
-    mult $t1, $t3
-    mflo $t1
-    li $t3, 128
-    mult $t2, $t3
-    mflo $t2
+    sll $t1, $t1, 2
+    # li $t3, 4
+    # mult $t1, $t3
+    # mflo $t1
+    # li $t3, 128
+    # mult $t2, $t3
+    # mflo $t2
+    sll $t2, $t2, 7
     lw $t3, 8($a0)
     lw $t4, 12($a0)
     lw $t5, 16($a0)
