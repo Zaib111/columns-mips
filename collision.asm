@@ -116,7 +116,7 @@ check_column_stop_falling:
     
     # check for out of bounds / at bottom
     li $t2, HEIGHT
-    addi $t1, $t1, 3 # bottom position
+    addi $t1, $t1, 3 # bottom position of column
     beq $t1, $t2, is_not_valid_to_fall
     # check for block underneath
     move $t2, $a1
@@ -147,6 +147,36 @@ clean_up_falling_column:
 # clearing detection
 
 
+#a0: board address
+#a1: current block address, NOT coordiantes
+#return $v0: 1 / 0 if block is valid / not valid to fall down
+# work underneath presumption that since we dont have width or height, just check if block underneath is colored with anythig
+# TODO: ADDRESS OUT OF BOUNDS CHECK LMAO
+is_block_valid_to_fall:
+    lw $t1, 128($t0)
+    beq $t1, $zero, block_is_valid_to_fall
+    j block_is_not_valid_to_fall
+    
+block_is_valid_to_fall:
+    li $v0, 1
+    jr $ra
+    
+block_is_not_valid_to_fall:
+    li $v0, 0
+    jr $ra
+
+
 
 ########################################
 # clear block algorithm
+
+# temporary bitmask onto the grid, define as the same dimensions as the address bits
+#seek left and right, get counts of continuous same color block, check boundaries CHECK BOUNDARIES
+#if count + self >= 3, then you know to clear
+#go through bitmask with counts, mark to delete
+#check for all 3 blocks inserted from column since those are the only ones that can change
+    # could check for all blocks actually?
+#go into address and delete all blocks marked for deletion
+# make all blocks fall
+    # know to stop by running algo HEIGHT times, inefficient but works
+# recalcualte deletion and loop until nothing else
