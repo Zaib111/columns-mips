@@ -68,6 +68,21 @@ main:
     j Exit
     # Initialize the game
 
+#############################################################################
+# Helper Functions
+#############################################################################
+
+convert_board_coordinates_to_address:
+    add $t0, $zero, $a0
+    add $t1, $zero, $a1
+    add $t2, $zero, $a2
+    sll $t0, $t0, 2
+    sll $t1, $t1, 7
+    add $t2, $t2, $t0
+    add $t2, $t2, $t1
+    move $v0, $t2
+    jr $ra
+
 ##############################################################################
 # Border Functions 
 ##############################################################################
@@ -213,12 +228,6 @@ draw_drop_column:
     lw $t1, 0($a0) # xpos
     lw $t2, 4($a0) # ypos
     sll $t1, $t1, 2
-    # li $t3, 4
-    # mult $t1, $t3
-    # mflo $t1
-    # li $t3, 128
-    # mult $t2, $t3
-    # mflo $t2
     sll $t2, $t2, 7
     lw $t3, 8($a0)
     lw $t4, 12($a0)
@@ -231,19 +240,81 @@ draw_drop_column:
     sw $t5, 256($t0)
     jr $ra
     
+####################################################################
+# Collision Detection
+####################################################################
+
+######################################
+#a0: column data address
+#a1: left / right = 0 / 1 
+#a2: board data address
+# return $v0: 1/0 for success / failure
+can_move_column_left_or_right:
+    addi $sp, $sp, -16
+    sw $ra, 12($sp)
+    sw $a0, 8($sp)
+    sw $a1, 4($sp)
+    sw $a2, 0($sp)
+    add $t0, $zero, $zero
+    move $t0, $a1
+    move $a1, $a2
+    beq $t0, $zero, can_move_column_left
+    j can_move_column_right
     
-game_loop:
-    # 1a. Check if key has been pressed
-    lw $t0, ADDR_KBRD
-    lw $t8, 0($t0)
-    # 1b. Check which key has been pressed
-    beq $t8, 1, keyboard_input
-    j no_key
-    # 2a. Check for collisions
-	# 2b. Update locations (capsules)
-	# 3. Draw the screen
-	# 4. Sleep
-    # 5. Go back to Step 1
+    
+# a0: column data address
+# a1: board data address
+can_move_column_left:
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    addi $t2, $t0, -1
+    beq $t2, $zero, invalid_move
+    move $a2, $a1
+    move $a0, $t2
+    move $a1, $t1
+    jal convert_board_coordinates_to_address
+    move $t2, $v0
+    lw $t6, 0($t2)
+    bne $t6, $zero, invalid_move
+    lw $t6, 128($t2)
+    bne $t6, $zero, invalid_move
+    lw $t6, 256($t2)
+    bne $t6, $zero, invalid_move
+    li $v0, 1
+    j return_check_move_to_caller
+
+can_move_column_right:
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    addi $t0, $t0, 1
+    li $t2, WIDTH
+    beq $t0, $t2, invalid_move
+    move $a2, $a1
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_address
+    move $t2, $v0
+    lw $t6, 0($t2)
+    bne $t6, $zero, invalid_move
+    lw $t6, 128($t2)
+    bne $t6, $zero, invalid_move
+    lw $t6, 256($t2)
+    bne $t6, $zero, invalid_move
+    li $v0, 1
+    j return_check_move_to_caller
+
+return_check_move_to_caller:
+    lw $ra, 12($sp)
+    addi $sp, $sp, 16
+    jr $ra
+
+invalid_move:
+    li $v0, 0
+    j return_check_move_to_caller
+    
+##################################################################
+# Keyboard Inputs
+###################################################################
 
 keyboard_input:
     # check which key was pressed
@@ -256,12 +327,24 @@ keyboard_input:
     j no_key                  # also ignore unknown key
 
 move_left:
+    la $a0, ACTIVE_COLUMN
+    li $a1, 0
+    la $a2, ADDR_DSPL
+    jal can_move_column_left_or_right
+    move $t0, $v0
+    beq $t0, $zero, no_key
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, -1 # subtract 1 from x
     sw $t1, ACTIVE_COLUMN # update x value
     j no_key
 
 move_right:
+    la $a0, ACTIVE_COLUMN
+    li $a1, 1
+    la $a2, ADDR_DSPL
+    jal can_move_column_left_or_right
+    move $t0, $v0
+    beq $t0, $zero, no_key
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, 1 # add 1 to x
     sw $t1, ACTIVE_COLUMN # update x value
@@ -295,6 +378,21 @@ no_key:
 	syscall
 	j game_loop
 	
+	
+	
+game_loop:
+    # 1a. Check if key has been pressed
+    lw $t0, ADDR_KBRD
+    lw $t8, 0($t0)
+    # 1b. Check which key has been pressed
+    beq $t8, 1, keyboard_input
+    j no_key
+    # 2a. Check for collisions
+	# 2b. Update locations (capsules)
+	# 3. Draw the screen
+	# 4. Sleep
+    # 5. Go back to Step 1
+
 Exit:
     li $v0, 10 # terminate the program gracefully
     syscall
