@@ -62,6 +62,7 @@ ACTIVE_GAME_SPACE:
 
     # Run the game.
 main:
+	jal initialize_game_space
 	la $a0, ACTIVE_COLUMN
 	jal generate_drop_column
     j game_loop
@@ -86,7 +87,7 @@ convert_board_coordinates_to_address:
 ##############################################################################
 # Border Functions 
 ##############################################################################
-paint_border:
+initialize_game_space:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
@@ -111,7 +112,6 @@ paint_border:
     lw $a2, WHITE
     jal draw_horizontal_line
     
-    
     # draw bottom border
     lw $a0, ADDR_COLUMNS
     li $a1, WIDTH
@@ -121,33 +121,65 @@ paint_border:
     sll $t0, $t0, 7
     add $a0, $a0, $t0
     jal draw_horizontal_line
-    
+    # black out rest of space
+    jal initialize_to_black_loop
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
-
-# t6: row counter
-paint_background:
+    
+initialize_to_black:
+    li $t0, HEIGHT
+    addi $t0, $t0, -1
+    move $t6, $zero
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    add $t6, $zero, $zero # row counter
-paint_bg_row_loop:
-    beq $t6, HEIGHT, end_paint_background
-    addi $t7, $zero, 128
-    mult $t7, $t6
-    mflo $t7
-    lw $a0, ADDR_COLUMNS # intializing first argument for starting point (beginning of row)
+initialize_to_black_loop:
+    beq $t6, $t0, end_intialize_to_black
+    sll $t7, $t6, 7
+    la $a0, ACTIVE_GAME_SPACE # intializing first argument for starting point (beginning of row)
     add $a0, $a0, $t7
     addi $a0, $a0, 4 # skip left border pixel
     li $a1, WIDTH # setting second argument to width
     li $a2, 0x000000 # setting third argument to black
     jal draw_horizontal_line
     addi $t6, $t6, 1
-    j paint_bg_row_loop
-end_paint_background:
+    j initialize_to_black_loop
+end_intialize_to_black:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
+
+# a0: game space address
+# a1: start point to display columns
+draw_game_space:
+    li $t0, 1
+    li $t1, 1
+    li $t2, WIDTH
+    li $t3, HEIGHT
+    j outer_draw_game_space_loop
+    outer_draw_game_space_loop:
+        li $t0, 1
+        beq $t1, $t3, exit_outer_draw_game_space_loop
+        j inner_draw_game_space_loop
+        inner_draw_game_space_loop:
+            beq $t0, $t2, exit_inner_draw_game_space_loop
+            sll $t4, $t0, 2
+            sll $t5, $t1, 7
+            move $t6, $a0
+            add $t6, $t6, $t4
+            add $t6, $t6, $t5
+            lw $t7, 0($t6)
+            move $t6, $a1
+            add $t6, $t6, $t4
+            add $t6, $t6, $t5
+            sw $t7, 0($t6)
+            addi $t0, $t0, 1
+            j inner_draw_game_space_loop
+        exit_inner_draw_game_space_loop:
+            addi $t1, $t1, 1
+            j outer_draw_game_space_loop
+    exit_outer_draw_game_space_loop:
+        jr $ra
 
 # $a0: starting pixel
 # $a1: height
@@ -224,7 +256,7 @@ generate_drop_column:
 #a0: column data address
 #a1: pointer address for top left corner of box
 draw_drop_column:
-    lw $t0, 0($a1)
+    lw $t0, ADDR_COLUMNS
     lw $t1, 0($a0) # xpos
     lw $t2, 4($a0) # ypos
     sll $t1, $t1, 2
@@ -368,10 +400,11 @@ shuffle:
     j no_key
     
 no_key:
-    jal paint_background # wipe screen
-	jal paint_border # redraw borders
+    la $a0, ACTIVE_GAME_SPACE
+    lw $a1, ADDR_COLUMNS
+    jal draw_game_space
 	la $a0, ACTIVE_COLUMN
-	la $a1, ADDR_COLUMNS
+	lw $a1, ADDR_COLUMNS
 	jal draw_drop_column # draw column at new position
 	li $v0, 32
 	li $a0, 16
