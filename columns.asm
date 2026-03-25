@@ -23,7 +23,7 @@
 ADDR_DSPL:
     .word 0x10008000
 ADDR_COLUMNS:
-    .word 0x10008108
+    .word 0x100084a8
 # The address of the keyboard. Don't forget to connect it!
 ADDR_KBRD:
     .word 0xffff0000
@@ -153,10 +153,6 @@ black_loop:
     addi $t1, $t1, 1            
     j black_loop
 end_black:
-    li $t3, 0xff0000
-    sw $t3, 4($t0)
-    sw $t3, 88($t0)
-    sw $t3, 36($t0)
     jr $ra
     
 # a0: game space address
@@ -401,9 +397,67 @@ invalid_drop_down:
     li $v0, 0
     jr $ra
 
-    
+#a0: column data address
+#a1: gamespace data address
+#return v0: 1 / 0 depending on success / fail, IF there is empty space underneath the column
+is_column_on_top_of_block:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    li $t2, HEIGHT
+    addi $t2, $t2, -4
+    beq $t1, $t2, invalid_drop_down
+    move $a0, $t0
+    move $a1, $t1
+    addi $a1, $a1, 3 # check for the 3rd down from head position
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_drop_down
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v1, 0
+    jr $ra
+###################################################################
+# Board modification
+###################################################################
+# a0: column data address
+place_column_in_game_space:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    lw $t3, 8($a0) # top color
+    sw $t3, 0($v0)
+    addi $t1, $t1, 1
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    lw $t3, 12($a0) # top color
+    sw $t3, 0($v0)
+    addi $t1, $t1, 2
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t3, 16($a0)
+    sw $t3, 0($v0)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
 ##################################################################
 # Keyboard Inputs
+
 ###################################################################
 
 keyboard_input:
@@ -426,6 +480,10 @@ move_left:
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, -1 # subtract 1 from x
     sw $t1, ACTIVE_COLUMN # update x value
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal can_move_column_down
+    beq $v0, $zero, place_block
     j no_key
 
 move_right:
@@ -438,16 +496,24 @@ move_right:
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, 1 # add 1 to x
     sw $t1, ACTIVE_COLUMN # update x value
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal can_move_column_down
+    beq $v0, $zero, place_block
     j no_key
 
 move_down:
     la $a0, ACTIVE_COLUMN
     la $a1, ACTIVE_GAME_SPACE
     jal can_move_column_down
-    beq $v0, $zero, no_key
+    beq $v0, $zero, place_block
     lw $t1, ACTIVE_COLUMN + 4 # load y value
     addi $t1, $t1, 1 # add 1 to y
     sw $t1, ACTIVE_COLUMN + 4 # update y value
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal is_column_on_top_of_block
+    beq $v0, $zero, place_block
     j no_key
 
 shuffle:
@@ -466,6 +532,21 @@ no_key:
 	la $a0, ACTIVE_COLUMN
 	lw $a1, ADDR_COLUMNS
 	jal draw_drop_column # draw column at new position
+	li $v0, 32
+	li $a0, 16
+	syscall
+	j game_loop
+	
+place_block:
+    # move column into place
+    la $a0, ACTIVE_COLUMN
+    lw $a1, ADDR_COLUMNS
+    jal place_column_in_game_space
+    
+    # calculate deletions
+    # spawn in new piece
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
 	li $v0, 32
 	li $a0, 16
 	syscall
