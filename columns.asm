@@ -455,12 +455,21 @@ place_column_in_game_space:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
+#    
+deletion_algorithm:
+
 ##################################################################
 # Keyboard Inputs
 
 ###################################################################
-
+# a0: keyboard input
+# a1: 
 keyboard_input:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $t0, ADDR_KBRD
+    lw $t8, 0($t0)
+    beq $t8, $zero, clean_up_keyboard_input
     # check which key was pressed
     lw $t2, 4($t0)
     beq $t2, 0x61, move_left  # 'a'
@@ -468,7 +477,7 @@ keyboard_input:
     beq $t2, 0x73, move_down  # 's'
     beq $t2, 0x77, shuffle    # 'w'
     beq $t2, 0x71, Exit       # 'q'
-    j no_key                  # also ignore unknown key
+    j clean_up_keyboard_input                  # also ignore unknown key
 
 move_left:
     la $a0, ACTIVE_COLUMN
@@ -476,15 +485,11 @@ move_left:
     la $a2, ACTIVE_GAME_SPACE
     jal can_move_column_left_or_right
     move $t0, $v0
-    beq $t0, $zero, no_key
+    beq $t0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, -1 # subtract 1 from x
     sw $t1, ACTIVE_COLUMN # update x value
-    la $a0, ACTIVE_COLUMN
-    la $a1, ACTIVE_GAME_SPACE
-    jal can_move_column_down
-    beq $v0, $zero, place_block
-    j no_key
+    j clean_up_keyboard_input
 
 move_right:
     la $a0, ACTIVE_COLUMN
@@ -492,29 +497,21 @@ move_right:
     la $a2, ACTIVE_GAME_SPACE
     jal can_move_column_left_or_right
     move $t0, $v0
-    beq $t0, $zero, no_key
+    beq $t0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, 1 # add 1 to x
     sw $t1, ACTIVE_COLUMN # update x value
-    la $a0, ACTIVE_COLUMN
-    la $a1, ACTIVE_GAME_SPACE
-    jal can_move_column_down
-    beq $v0, $zero, place_block
-    j no_key
-
+    j clean_up_keyboard_input
+    
 move_down:
     la $a0, ACTIVE_COLUMN
     la $a1, ACTIVE_GAME_SPACE
     jal can_move_column_down
-    beq $v0, $zero, place_block
+    beq $v0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN + 4 # load y value
     addi $t1, $t1, 1 # add 1 to y
     sw $t1, ACTIVE_COLUMN + 4 # update y value
-    la $a0, ACTIVE_COLUMN
-    la $a1, ACTIVE_GAME_SPACE
-    jal is_column_on_top_of_block
-    beq $v0, $zero, place_block
-    j no_key
+    j clean_up_keyboard_input
 
 shuffle:
     lw $t1, ACTIVE_COLUMN + 8 # load top colour
@@ -525,25 +522,20 @@ shuffle:
     sw $t2, ACTIVE_COLUMN + 16
     sw $t3, ACTIVE_COLUMN + 8
     
-    j no_key
-    
-no_key:
-    jal draw_game_space
-	la $a0, ACTIVE_COLUMN
-	lw $a1, ADDR_COLUMNS
-	jal draw_drop_column # draw column at new position
-	li $v0, 32
-	li $a0, 16
-	syscall
-	j game_loop
+    j clean_up_keyboard_input
+
+clean_up_keyboard_input:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
 	
 place_block:
     # move column into place
     la $a0, ACTIVE_COLUMN
     lw $a1, ADDR_COLUMNS
     jal place_column_in_game_space
-    
     # calculate deletions
+    
     # spawn in new piece
     la $a0, ACTIVE_COLUMN
     jal generate_drop_column
@@ -556,17 +548,34 @@ place_block:
 	
 game_loop:
     # 1a. Check if key has been pressed
-    lw $t0, ADDR_KBRD
-    lw $t8, 0($t0)
-    # 1b. Check which key has been pressed
-    beq $t8, 1, keyboard_input
-    j no_key
-    # 2a. Check for collisions
+    jal keyboard_input
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal is_column_on_top_of_block
+    beq $v0, $zero, collision_occured    
+    j render_screen
+	
+collision_occured: 
+    la $a0, ACTIVE_COLUMN
+    jal place_column_in_game_space
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
 	# 2b. Update locations (capsules)
+    j render_screen
+    
+render_screen:
 	# 3. Draw the screen
+    jal draw_game_space
+	la $a0, ACTIVE_COLUMN
+	lw $a1, ADDR_COLUMNS
+	jal draw_drop_column # draw column at new position
 	# 4. Sleep
+	li $v0, 32
+	li $a0, 16
+	syscall
     # 5. Go back to Step 1
-
+	j game_loop
+    
 Exit:
     li $v0, 10 # terminate the program gracefully
     syscall
