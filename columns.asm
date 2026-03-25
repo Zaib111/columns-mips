@@ -373,6 +373,35 @@ invalid_move:
     li $v0, 0
     j return_check_move_to_caller
     
+#a0: column data address
+#a1: gamespace data address
+#return v0: 1 / 0 depending on success / fail, IF there is empty space underneath the column
+can_move_column_down:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    li $t2, HEIGHT
+    addi $t2, $t2, -4
+    beq $t1, $t2, invalid_drop_down
+    move $a0, $t0
+    move $a1, $t1
+    addi $a1, $a1, 3 # check for the 3rd down from head position
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_drop_down
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v1, 0
+    jr $ra
+    
+invalid_drop_down:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v0, 0
+    jr $ra
+
+    
 ##################################################################
 # Keyboard Inputs
 ###################################################################
@@ -412,6 +441,10 @@ move_right:
     j no_key
 
 move_down:
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal can_move_column_down
+    beq $v0, $zero, no_key
     lw $t1, ACTIVE_COLUMN + 4 # load y value
     addi $t1, $t1, 1 # add 1 to y
     sw $t1, ACTIVE_COLUMN + 4 # update y value
