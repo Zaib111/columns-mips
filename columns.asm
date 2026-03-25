@@ -143,7 +143,7 @@ initialize_to_black:
     la $t0, ACTIVE_GAME_SPACE   
     li $t1, 0                   
     li $t2, 128                 
-    li $t3, 0x808080           
+    li $t3, 0x000000   
 
 black_loop:
     beq $t1, $t2, end_black     
@@ -153,6 +153,10 @@ black_loop:
     addi $t1, $t1, 1            
     j black_loop
 end_black:
+    li $t3, 0xff0000
+    sw $t3, 4($t0)
+    sw $t3, 88($t0)
+    sw $t3, 36($t0)
     jr $ra
     
 # a0: game space address
@@ -322,20 +326,19 @@ can_move_column_left:
     lw $t1, 4($a0)
     addi $t2, $t0, -1
     beq $t2, $zero, invalid_move
-    sll $t3, $t0, 2
-    sll $t4, $t0, 4
-    
-    # move $a2, $a1
-    # move $a0, $t2
-    # move $a1, $t1
-    # jal convert_board_coordinates_to_address
-    # move $t2, $v0
-    # lw $t6, 0($t2)
-    # bne $t6, $zero, invalid_move
-    # lw $t6, 128($t2)
-    # bne $t6, $zero, invalid_move
-    # lw $t6, 256($t2)
-    # bne $t6, $zero, invalid_move
+    addi $a0, $t0, -1
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
     li $v0, 1
     j return_check_move_to_caller
 
@@ -345,17 +348,19 @@ can_move_column_right:
     addi $t0, $t0, 1
     li $t2, WIDTH
     beq $t0, $t2, invalid_move
-    move $a2, $a1
     move $a0, $t0
     move $a1, $t1
-    # jal convert_board_coordinates_to_address
-    move $t2, $v0
-    lw $t6, 0($t2)
-    bne $t6, $zero, invalid_move
-    lw $t6, 128($t2)
-    bne $t6, $zero, invalid_move
-    lw $t6, 256($t2)
-    bne $t6, $zero, invalid_move
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
     li $v0, 1
     j return_check_move_to_caller
 
