@@ -72,11 +72,13 @@ main:
 #############################################################################
 # Helper Functions
 #############################################################################
+#a1: x-pos
+#a2: y-pos
 
-convert_board_coordinates_to_address:
-    add $t0, $zero, $a0
-    add $t1, $zero, $a1
-    add $t2, $zero, $a2
+convert_board_coordinates_to_display_address:
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, ADDR_COLUMNS
     sll $t0, $t0, 2
     sll $t1, $t1, 7
     add $t2, $t2, $t0
@@ -84,6 +86,16 @@ convert_board_coordinates_to_address:
     move $v0, $t2
     jr $ra
 
+convert_board_coordinates_to_gamespace_address:
+    la $t0, ACTIVE_GAME_SPACE
+    move $t1, $a0
+    move $t2, $a1
+    sll $t1, $t1, 2
+    sll $t2, $t2, 5
+    add $t0, $t0, $t1
+    add $t0, $t0, $t2
+    move $v0, $t0
+    jr $ra
 ##############################################################################
 # Border Functions 
 ##############################################################################
@@ -122,63 +134,73 @@ initialize_game_space:
     add $a0, $a0, $t0
     jal draw_horizontal_line
     # black out rest of space
-    jal initialize_to_black_loop
+    jal initialize_to_black
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
     
 initialize_to_black:
-    li $t0, HEIGHT
-    addi $t0, $t0, -1
-    move $t6, $zero
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-initialize_to_black_loop:
-    beq $t6, $t0, end_intialize_to_black
-    sll $t7, $t6, 7
-    la $a0, ACTIVE_GAME_SPACE # intializing first argument for starting point (beginning of row)
-    add $a0, $a0, $t7
-    addi $a0, $a0, 4 # skip left border pixel
-    li $a1, WIDTH # setting second argument to width
-    li $a2, 0x000000 # setting third argument to black
-    jal draw_horizontal_line
-    addi $t6, $t6, 1
-    j initialize_to_black_loop
-end_intialize_to_black:
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    jr $ra
+    la $t0, ACTIVE_GAME_SPACE   
+    li $t1, 0                   
+    li $t2, 128                 
+    li $t3, 0x808080           
 
+black_loop:
+    beq $t1, $t2, end_black     
+    sll $t4, $t1, 2             
+    add $t5, $t0, $t4           
+    sw $t3, 0($t5)              
+    addi $t1, $t1, 1            
+    j black_loop
+end_black:
+    jr $ra
+    
 # a0: game space address
 # a1: start point to display columns
 draw_game_space:
-    li $t0, 1
-    li $t1, 1
-    li $t2, WIDTH
-    li $t3, HEIGHT
+    addi $sp, $sp, -20
+    li $s0, 1
+    li $s1, 1
+    li $s2, WIDTH
+    li $s3, HEIGHT
+    addi $s3, $s3, -1 #off by one
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
     j outer_draw_game_space_loop
     outer_draw_game_space_loop:
-        li $t0, 1
-        beq $t1, $t3, exit_outer_draw_game_space_loop
+        li $s0, 1
+        sw $s0, 4($sp)
+        lw $s1, 8($sp)
+        lw $s3, 16($sp)
+        beq $s1, $s3, exit_outer_draw_game_space_loop
         j inner_draw_game_space_loop
         inner_draw_game_space_loop:
-            beq $t0, $t2, exit_inner_draw_game_space_loop
-            sll $t4, $t0, 2
-            sll $t5, $t1, 7
-            move $t6, $a0
-            add $t6, $t6, $t4
-            add $t6, $t6, $t5
-            lw $t7, 0($t6)
-            move $t6, $a1
-            add $t6, $t6, $t4
-            add $t6, $t6, $t5
-            sw $t7, 0($t6)
-            addi $t0, $t0, 1
+            lw $s0, 4($sp)
+            lw $s2, 12($sp)
+            beq $s0, $s2, exit_inner_draw_game_space_loop
+            move $a0, $s0
+            move $a1, $s1
+            jal convert_board_coordinates_to_gamespace_address
+            move $t6, $v0
+            jal convert_board_coordinates_to_display_address
+            move $t7, $v0
+            lw $t8, 0($t6)
+            sw $t8, 0($t7)
+            lw $s0, 4($sp)
+            addi $s0, $s0, 1
+            sw $s0, 4($sp)
             j inner_draw_game_space_loop
         exit_inner_draw_game_space_loop:
-            addi $t1, $t1, 1
+            lw $s1, 8($sp)
+            addi $s1, $s1, 1
+            sw $s1, 8($sp)
             j outer_draw_game_space_loop
     exit_outer_draw_game_space_loop:
+        lw $ra, 0($sp)
+        addi $sp, $sp, 20
         jr $ra
 
 # $a0: starting pixel
@@ -279,7 +301,7 @@ draw_drop_column:
 ######################################
 #a0: column data address
 #a1: left / right = 0 / 1 
-#a2: board data address
+#a2: game space address
 # return $v0: 1/0 for success / failure
 can_move_column_left_or_right:
     addi $sp, $sp, -16
@@ -287,7 +309,6 @@ can_move_column_left_or_right:
     sw $a0, 8($sp)
     sw $a1, 4($sp)
     sw $a2, 0($sp)
-    add $t0, $zero, $zero
     move $t0, $a1
     move $a1, $a2
     beq $t0, $zero, can_move_column_left
@@ -295,23 +316,26 @@ can_move_column_left_or_right:
     
     
 # a0: column data address
-# a1: board data address
+# a1: game space address
 can_move_column_left:
     lw $t0, 0($a0)
     lw $t1, 4($a0)
     addi $t2, $t0, -1
     beq $t2, $zero, invalid_move
-    move $a2, $a1
-    move $a0, $t2
-    move $a1, $t1
-    jal convert_board_coordinates_to_address
-    move $t2, $v0
-    lw $t6, 0($t2)
-    bne $t6, $zero, invalid_move
-    lw $t6, 128($t2)
-    bne $t6, $zero, invalid_move
-    lw $t6, 256($t2)
-    bne $t6, $zero, invalid_move
+    sll $t3, $t0, 2
+    sll $t4, $t0, 4
+    
+    # move $a2, $a1
+    # move $a0, $t2
+    # move $a1, $t1
+    # jal convert_board_coordinates_to_address
+    # move $t2, $v0
+    # lw $t6, 0($t2)
+    # bne $t6, $zero, invalid_move
+    # lw $t6, 128($t2)
+    # bne $t6, $zero, invalid_move
+    # lw $t6, 256($t2)
+    # bne $t6, $zero, invalid_move
     li $v0, 1
     j return_check_move_to_caller
 
@@ -324,7 +348,7 @@ can_move_column_right:
     move $a2, $a1
     move $a0, $t0
     move $a1, $t1
-    jal convert_board_coordinates_to_address
+    # jal convert_board_coordinates_to_address
     move $t2, $v0
     lw $t6, 0($t2)
     bne $t6, $zero, invalid_move
@@ -361,7 +385,7 @@ keyboard_input:
 move_left:
     la $a0, ACTIVE_COLUMN
     li $a1, 0
-    la $a2, ADDR_DSPL
+    la $a2, ACTIVE_GAME_SPACE
     jal can_move_column_left_or_right
     move $t0, $v0
     beq $t0, $zero, no_key
@@ -373,7 +397,7 @@ move_left:
 move_right:
     la $a0, ACTIVE_COLUMN
     li $a1, 1
-    la $a2, ADDR_DSPL
+    la $a2, ACTIVE_GAME_SPACE
     jal can_move_column_left_or_right
     move $t0, $v0
     beq $t0, $zero, no_key
@@ -400,8 +424,6 @@ shuffle:
     j no_key
     
 no_key:
-    la $a0, ACTIVE_GAME_SPACE
-    lw $a1, ADDR_COLUMNS
     jal draw_game_space
 	la $a0, ACTIVE_COLUMN
 	lw $a1, ADDR_COLUMNS
