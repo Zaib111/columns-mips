@@ -515,11 +515,99 @@ deletion_algorithm:
     addi $sp, $sp, -8
     sw $ra, 0($sp)
     sw $a0, 4($sp)
-    li $s5, 0
-    li $s6, 128
+deletion_algorithm_loop:
     la $a0, ACTIVE_GAME_SPACE
     jal mark_delete_bits
-    j end_deletion_algorithm
+    beq $v0, $zero, end_deletion_algorithm
+    jal delete_values_from_mask
+    la $a0, ACTIVE_GAME_SPACE
+    jal apply_board_gravity
+    j deletion_algorithm_loop
+
+end_deletion_algorithm:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+# a0: game space address
+apply_board_gravity:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    # loop through all possible spaces, if not empty, check underneath and move if empty space underneath. if more than one bit was moved,
+    # do it again until nothing remains.
+apply_board_gravity_outer_loop:
+    li $s5, 0
+    li $s6, 111 # assuming 16 x 8 bits, last row doesnt count / cant be pushed down, last last row is techinically white space
+    li $t1, 0
+    apply_board_gravity_inner_loop:
+        beq $s5, $s6, end_apply_board_gravity_outer_loop
+        lw $t2, 4($sp)
+        sll $t3, $s6, 2
+        add $t4, $t2, $t3
+        lw $t5, 0($t4) # current bit
+        addi $t7, $s6, 8
+        sll $t7, $t7, 2
+        add $t8, $t2, $t7
+        lw $t6, 0($t8) # bit one row down
+        beq $t5, $zero, skip_apply_board_gravity_inner_loop
+        bne $t6, $zero, skip_apply_board_gravity_inner_loop
+        sw $t5, 0($t8) # move down
+        sw $zero, 0($t4) # set current to empty
+        addi $s6, $s6, -1
+        addi $t1, $t1, 1 # increment count of moved down
+        j apply_board_gravity_inner_loop
+    skip_apply_board_gravity_inner_loop:
+        addi $s6, $s6, -1
+        j apply_board_gravity_inner_loop
+    end_apply_board_gravity_inner_loop:
+        beq $t1, $zero, end_apply_board_gravity_outer_loop
+        # at this point, at least one bit has been moved
+        j apply_board_gravity_outer_loop
+end_apply_board_gravity_outer_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+
+delete_values_from_mask:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $t0, ACTIVE_GAME_SPACE
+    la $t1, DELETE_SPACES_MASK
+    li $t2, 0                   
+    li $t3, 128
+    li $t9, 0 # intialize delete indicator to 0
+delete_loop:
+    beq $t2, $t3, stop_delete
+    sll $t4, $t2, 2 # addr for active-game-space since its 4 bytes
+    add $t5, $t1, $t2
+    lb $t7, 0($t5)
+    bne $t7, $zero, delete_bit_from_game_space
+    addi $t2, $t2, 1
+    j delete_loop
+delete_bit_from_game_space:
+    add $t6, $t0, $t4
+    sw $zero, 0($t6)
+    sb $zero, 0($t5)
+    li $t9, 1 # tracking if we are deleting
+    addi $t2, $t2, 1
+    j delete_loop
+stop_delete:
+    beq $t9, $zero, skip_delete_sound
+    # play sound
+    li $v0, 31
+    li $a0, 60    
+    li $a1, 200   
+    li $a2, 0     
+    li $a3, 100
+    syscall
+    skip_delete_sound:
+        lw $ra, 0($sp)
+        addi $sp, $sp, 4
+        jr $ra
+
+
 #a0: game space address
 # return $v0: 1 / 0 whether to trigger board gravity and to re evaluate for deletion again
 mark_delete_bits:
@@ -530,7 +618,7 @@ mark_delete_bits:
     li $s5, 0
     li $s6, 128
 mark_delete_bits_loop:
-    beq $s5, $s6, end_delete_bits_loop
+    beq $s5, $s6, end_mark_delete_bits_loop
     lw $a0, 4($sp)
     li $t6, 8
     div $s5, $t6
@@ -581,54 +669,13 @@ mark_delete_bits_loop:
     sw $t0, 8($sp)
     addi $s5, $s5, 1
     j mark_delete_bits_loop
-end_delete_bits_loop:
+end_mark_delete_bits_loop:
     lw $ra, 0($sp)
     lw $t0, 8($sp)
     sgt $v0, $t0, $zero# more than one bit deleted
     addi $sp, $sp, 12
     jr $ra
-end_deletion_algorithm:
-    jal delete_values_from_mask
-    lw $ra, 0($sp)
-    addi $sp, $sp, 8
-    jr $ra
 
-delete_values_from_mask:
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    la $t0, ACTIVE_GAME_SPACE
-    la $t1, DELETE_SPACES_MASK
-    li $t2, 0                   
-    li $t3, 128
-    li $t9, 0 # intialize delete indicator to 0
-delete_loop:
-    beq $t2, $t3, stop_delete
-    sll $t4, $t2, 2 # addr for active-game-space since its 4 bytes
-    add $t5, $t1, $t2
-    lb $t7, 0($t5)
-    bne $t7, $zero, delete_bit_from_game_space
-    addi $t2, $t2, 1
-    j delete_loop
-delete_bit_from_game_space:
-    add $t6, $t0, $t4
-    sw $zero, 0($t6)
-    sb $zero, 0($t5)
-    li $t9, 1 # tracking if we are deleting
-    addi $t2, $t2, 1
-    j delete_loop
-stop_delete:
-    beq $t9, $zero, skip_delete_sound
-    # play sound
-    li $v0, 31
-    li $a0, 60    
-    li $a1, 200   
-    li $a2, 0     
-    li $a3, 100
-    syscall
-    skip_delete_sound:
-        lw $ra, 0($sp)
-        addi $sp, $sp, 4
-        jr $ra
 
 #a0: game space address
 #a1: root x-pos
@@ -703,7 +750,8 @@ mark_left_consecutive_horizontal_loop:
     addi $s2, $s2, -1
     j mark_left_consecutive_horizontal_loop
 end_mark_consecutive_horizontal:
-    addi $v0, $s3, -1
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -779,7 +827,8 @@ mark_down_consecutive_vertical_loop:
     addi $s2, $s2, -1
     j mark_down_consecutive_vertical_loop
 end_mark_consecutive_vertical:
-    addi $v0, $s3, -1
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -869,7 +918,8 @@ mark_down_right_consecutive_diagonal_loop:
     addi $s2, $s2, -1
     j mark_down_right_consecutive_diagonal_loop
 end_mark_consecutive_right_diagonal:
-    addi $v0, $s3, -1
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -960,7 +1010,8 @@ mark_down_left_consecutive_diagonal_loop:
     addi $s2, $s2, -1
     j mark_down_left_consecutive_diagonal_loop
 end_mark_consecutive_left_diagonal:
-    addi $v0, $s3, -1
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
