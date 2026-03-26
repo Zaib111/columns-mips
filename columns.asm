@@ -537,6 +537,24 @@ mark_delete_bits_loop:
     add $t8, $a0, $t7
     lw $a3, 0($t8)
     jal mark_delete_consecutive_vertical
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_right_diagonal
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_left_diagonal
     addi $s5, $s5, 1
     j mark_delete_bits_loop
 end_deletion_algorithm:
@@ -662,7 +680,7 @@ end_mark_consecutive_horizontal:
 #a1: root x-pos
 #a2: root y-pos
 #a3: root color
-# count # of matching consecutive in horizontal row. if >= 3, mark for deletion.
+# count # of matching consecutive in vertical column. if >= 3, mark for deletion.
 mark_delete_consecutive_vertical:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -670,7 +688,7 @@ mark_delete_consecutive_vertical:
     sw $a1, 8($sp)
     sw $a2, 12($sp)
     sw $a3, 16($sp)
-    beq $a3, $zero, end_mark_consecutive_horizontal
+    beq $a3, $zero, end_mark_consecutive_vertical
 check_up_vertical:
     li $s1, 0
     lw $t4, 12($sp)
@@ -731,7 +749,178 @@ end_mark_consecutive_vertical:
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
-
+    
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos
+#a3: root color
+# count # of matching consecutive in diagonal going top left to bottom right. if >= 3, mark for deletion.
+mark_delete_consecutive_right_diagonal:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $a1, 8($sp)
+    sw $a2, 12($sp)
+    sw $a3, 16($sp)
+    beq $a3, $zero, end_mark_consecutive_right_diagonal
+check_up_left_consecutive_diagonal:
+    li $s1, 0
+    lw $t4, 8($sp)   # Current X
+    lw $t5, 12($sp)  # Current Y
+    addi $t4, $t4, -1
+    addi $t5, $t5, -1
+check_up_left_consecutive_diagonal_loop:
+    beq $t4, $zero, check_down_right_consecutive_diagonal
+    beq $t5, $zero, check_down_right_consecutive_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)  
+    bne $t7, $t8, check_down_right_consecutive_diagonal
+    
+    addi $s1, $s1, 1
+    addi $t4, $t4, -1
+    addi $t5, $t5, -1
+    j check_up_left_consecutive_diagonal_loop
+    
+check_down_right_consecutive_diagonal:
+    li $s2, 0
+    lw $t4, 8($sp)
+    lw $t5, 12($sp)
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+check_down_right_consecutive_diagonal_loop:
+    li $t9, WIDTH
+    beq $t4, $t9, evaluate_delete_consecutive_right_diagonal
+    li $t9, HEIGHT
+    beq $t5, $t9, evaluate_delete_consecutive_right_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)
+    bne $t7, $t8, evaluate_delete_consecutive_right_diagonal
+    addi $s2, $s2, 1
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+    j check_down_right_consecutive_diagonal_loop
+    
+evaluate_delete_consecutive_right_diagonal:
+    add $s3, $s1, $s2
+    li $t5, 1
+    sgt $t4, $s3, $t5
+    beq $t4, $zero, end_mark_consecutive_right_diagonal
+mark_up_left_consecutive_diagonal_loop:
+    beq $s1, $zero, mark_down_right_consecutive_diagonal_loop
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    sub $a0, $a0, $s1
+    sub $a1, $a1, $s1
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s1, $s1, -1
+    j mark_up_left_consecutive_diagonal_loop
+mark_down_right_consecutive_diagonal_loop:
+    beq $s2, $zero, end_mark_consecutive_right_diagonal
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    add $a0, $a0, $s2
+    add $a1, $a1, $s2
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s2, $s2, -1
+    j mark_down_right_consecutive_diagonal_loop
+end_mark_consecutive_right_diagonal:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+    
+mark_delete_consecutive_left_diagonal:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)   # Gamespace base
+    sw $a1, 8($sp)   # Root X
+    sw $a2, 12($sp)  # Root Y
+    sw $a3, 16($sp)  # Root Color
+    beq $a3, $zero, end_mark_consecutive_left_diagonal
+    
+check_up_right_consecutive_diagonal:
+    li $s1, 0
+    lw $t4, 8($sp)   # Current X
+    lw $t5, 12($sp)  # Current Y
+    addi $t4, $t4, 1
+    addi $t5, $t5, -1
+check_up_right_consecutive_diagonal_loop:
+    li $t9, WIDTH
+    beq $t4, $t9, check_down_left_consecutive_diagonal
+    beq $t5, $zero, check_down_left_consecutive_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)  
+    bne $t7, $t8, check_down_left_consecutive_diagonal
+    
+    addi $s1, $s1, 1
+    addi $t4, $t4, 1
+    addi $t5, $t5, -1
+    j check_up_right_consecutive_diagonal_loop
+    
+check_down_left_consecutive_diagonal:
+    li $s2, 0
+    lw $t4, 8($sp)
+    lw $t5, 12($sp)
+    addi $t4, $t4, -1
+    addi $t5, $t5, 1
+check_down_left_consecutive_diagonal_loop:
+    li $t9, HEIGHT
+    beq $t4, $zero, evaluate_delete_consecutive_left_diagonal
+    beq $t5, $t9, evaluate_delete_consecutive_left_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)
+    bne $t7, $t8, evaluate_delete_consecutive_left_diagonal
+    addi $s2, $s2, 1
+    addi $t4, $t4, -1
+    addi $t5, $t5, 1
+    j check_down_left_consecutive_diagonal_loop
+    
+evaluate_delete_consecutive_left_diagonal:
+    add $s3, $s1, $s2
+    li $t5, 1
+    sgt $t4, $s3, $t5
+    beq $t4, $zero, end_mark_consecutive_right_diagonal
+mark_up_right_consecutive_diagonal_loop:
+    beq $s1, $zero, mark_down_left_consecutive_diagonal_loop
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    add $a0, $a0, $s1
+    sub $a1, $a1, $s1
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s1, $s1, -1
+    j mark_up_right_consecutive_diagonal_loop
+mark_down_left_consecutive_diagonal_loop:
+    beq $s2, $zero, end_mark_consecutive_left_diagonal
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    sub $a0, $a0, $s2
+    add $a1, $a1, $s2
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s2, $s2, -1
+    j mark_down_left_consecutive_diagonal_loop
+end_mark_consecutive_left_diagonal:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
 ##################################################################
 # Keyboard Inputs
 
