@@ -37,6 +37,18 @@ BLOCK_COLORS:
     .word 0x00ffff    # Index 5: CYAN
 WHITE:
     .word 0xffffff
+GRAVITY_COUNTER:
+    .word 0
+# Gravity Threshold
+GRAVITY_THRESHOLD:
+    .word 60 
+# Time counter to increase gravity
+TIME_COUNTER:
+    .word 0
+MINIMUM_GRAVITY_THRESHOLD:
+    .word 10
+menu_msg:
+    .asciiz "Select difficulty:\n1. Easy\n2. Medium\n3. Hard\n"
 # Constant Data
 
 .eqv HEIGHT 16
@@ -64,12 +76,42 @@ DELETE_SPACES_MASK:
 
     # Run the game.
 main:
-	jal initialize_game_space
+    # print message to console
+    li $v0, 4          
+    la $a0, menu_msg
+    syscall
+    
+    # read a character
+    li $v0, 12        
+    syscall
+    
+    beq $v0, 0x31, set_easy
+    beq $v0, 0x32, set_medium
+    beq $v0, 0x33, set_hard
+    j set_medium
+    
+set_easy:
+   li $t0, 120
+   sw $t0, GRAVITY_THRESHOLD
+   j start_game
+   
+set_medium:
+    li $t0, 60
+    sw $t0, GRAVITY_THRESHOLD
+    j start_game
+
+set_hard:
+    li $t0, 30
+    sw $t0, GRAVITY_THRESHOLD
+    j start_game
+    
+# Initialize the game
+start_game: 
+    jal initialize_game_space
 	la $a0, ACTIVE_COLUMN
 	jal generate_drop_column
     j game_loop
     j Exit
-    # Initialize the game
 
 #############################################################################
 # Helper Functions
@@ -716,11 +758,46 @@ render_screen:
 	la $a0, ACTIVE_COLUMN
 	lw $a1, ADDR_COLUMNS
 	jal draw_drop_column # draw column at new position
+	
+	# increment gravity counter
+	lw  $t1, GRAVITY_COUNTER
+	addi $t1, $t1, 1
+	sw $t1, GRAVITY_COUNTER
+	
+	lw $t2, GRAVITY_THRESHOLD
+	
+	# check if counter == threshold (60) 
+	bne $t1, $t2, skip_gravity
+	
+	# gravity logic
+	sw $zero, GRAVITY_COUNTER # reset counter to 0
+	lw $t3, ACTIVE_COLUMN + 4
+	addi $t3, $t3, 1
+	sw $t3, ACTIVE_COLUMN + 4
+	
+	# increment time counter every second
+	lw $t4, TIME_COUNTER
+	addi $t4, $t4, 1
+	sw $t4, TIME_COUNTER
+	
+	li $t5, 10
+	div $t4, $t5
+	mfhi $t5 # get remainder
+	bne $t5, $zero, skip_gravity
+	
+	# check if threshold is >= minimum threshold
+	lw $t6, MINIMUM_GRAVITY_THRESHOLD
+	beq $t6, $t2, skip_gravity
+	addi $t2, $t2, -10
+	sw $t2, GRAVITY_THRESHOLD
+
+skip_gravity:
 	# 4. Sleep
 	li $v0, 32
 	li $a0, 16
 	syscall
-    # 5. Go back to Step 1
+	
+	# 5. Go back to Step 1
 	j game_loop
     
 Exit:
