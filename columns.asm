@@ -517,8 +517,20 @@ deletion_algorithm:
     sw $a0, 4($sp)
     li $s5, 0
     li $s6, 128
+    la $a0, ACTIVE_GAME_SPACE
+    jal mark_delete_bits
+    j end_deletion_algorithm
+#a0: game space address
+# return $v0: 1 / 0 whether to trigger board gravity and to re evaluate for deletion again
+mark_delete_bits:
+    addi $sp, $sp, -12
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $zero, 8($sp)
+    li $s5, 0
+    li $s6, 128
 mark_delete_bits_loop:
-    beq $s5, $s6, end_deletion_algorithm
+    beq $s5, $s6, end_delete_bits_loop
     lw $a0, 4($sp)
     li $t6, 8
     div $s5, $t6
@@ -528,6 +540,9 @@ mark_delete_bits_loop:
     add $t8, $a0, $t7
     lw $a3, 0($t8)
     jal mark_delete_consecutive_horizontal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
     lw $a0, 4($sp)
     li $t6, 8
     div $s5, $t6
@@ -537,6 +552,9 @@ mark_delete_bits_loop:
     add $t8, $a0, $t7
     lw $a3, 0($t8)
     jal mark_delete_consecutive_vertical
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
     lw $a0, 4($sp)
     li $t6, 8
     div $s5, $t6
@@ -546,6 +564,9 @@ mark_delete_bits_loop:
     add $t8, $a0, $t7
     lw $a3, 0($t8)
     jal mark_delete_consecutive_right_diagonal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
     lw $a0, 4($sp)
     li $t6, 8
     div $s5, $t6
@@ -555,8 +576,17 @@ mark_delete_bits_loop:
     add $t8, $a0, $t7
     lw $a3, 0($t8)
     jal mark_delete_consecutive_left_diagonal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
     addi $s5, $s5, 1
     j mark_delete_bits_loop
+end_delete_bits_loop:
+    lw $ra, 0($sp)
+    lw $t0, 8($sp)
+    sgt $v0, $t0, $zero# more than one bit deleted
+    addi $sp, $sp, 12
+    jr $ra
 end_deletion_algorithm:
     jal delete_values_from_mask
     lw $ra, 0($sp)
@@ -605,6 +635,7 @@ stop_delete:
 #a2: root y-pos
 #a3: root color
 # count # of matching consecutive in horizontal row. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_horizontal:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -672,6 +703,7 @@ mark_left_consecutive_horizontal_loop:
     addi $s2, $s2, -1
     j mark_left_consecutive_horizontal_loop
 end_mark_consecutive_horizontal:
+    addi $v0, $s3, -1
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -681,6 +713,7 @@ end_mark_consecutive_horizontal:
 #a2: root y-pos
 #a3: root color
 # count # of matching consecutive in vertical column. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_vertical:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -746,6 +779,7 @@ mark_down_consecutive_vertical_loop:
     addi $s2, $s2, -1
     j mark_down_consecutive_vertical_loop
 end_mark_consecutive_vertical:
+    addi $v0, $s3, -1
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -755,6 +789,7 @@ end_mark_consecutive_vertical:
 #a2: root y-pos
 #a3: root color
 # count # of matching consecutive in diagonal going top left to bottom right. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_right_diagonal:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -834,10 +869,17 @@ mark_down_right_consecutive_diagonal_loop:
     addi $s2, $s2, -1
     j mark_down_right_consecutive_diagonal_loop
 end_mark_consecutive_right_diagonal:
+    addi $v0, $s3, -1
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
-    
+
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos
+#a3: root color
+# count # of matching consecutive in diagonal going bottom left to top right. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_left_diagonal:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -918,6 +960,7 @@ mark_down_left_consecutive_diagonal_loop:
     addi $s2, $s2, -1
     j mark_down_left_consecutive_diagonal_loop
 end_mark_consecutive_left_diagonal:
+    addi $v0, $s3, -1
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
