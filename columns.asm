@@ -23,7 +23,7 @@
 ADDR_DSPL:
     .word 0x10008000
 ADDR_COLUMNS:
-    .word 0x10008108
+    .word 0x100084a8
 # The address of the keyboard. Don't forget to connect it!
 ADDR_KBRD:
     .word 0xffff0000
@@ -54,6 +54,8 @@ ACTIVE_COLUMN:
     .word 0xffffff # bottom color
 ACTIVE_GAME_SPACE:
     .space 512
+DELETE_SPACES_MASK:
+    .space 128
 ##############################################################################
 # Code
 ##############################################################################
@@ -62,16 +64,54 @@ ACTIVE_GAME_SPACE:
 
     # Run the game.
 main:
+	jal initialize_game_space
 	la $a0, ACTIVE_COLUMN
 	jal generate_drop_column
     j game_loop
     j Exit
     # Initialize the game
 
+#############################################################################
+# Helper Functions
+#############################################################################
+#a1: x-pos
+#a2: y-pos
+
+convert_board_coordinates_to_display_address:
+    move $t0, $a0
+    move $t1, $a1
+    lw $t2, ADDR_COLUMNS
+    sll $t0, $t0, 2
+    sll $t1, $t1, 7
+    add $t2, $t2, $t0
+    add $t2, $t2, $t1
+    move $v0, $t2
+    jr $ra
+
+convert_board_coordinates_to_gamespace_address:
+    la $t0, ACTIVE_GAME_SPACE
+    move $t1, $a0
+    move $t2, $a1
+    sll $t1, $t1, 2 # x4
+    sll $t2, $t2, 5 # x32
+    add $t0, $t0, $t1
+    add $t0, $t0, $t2
+    move $v0, $t0
+    jr $ra
+    
+convert_board_coordinates_to_mask_address:
+    la $t0, DELETE_SPACES_MASK
+    move $t1, $a0
+    move $t2, $a1
+    sll $t2, $t2, 3 # x8
+    add $t0, $t0, $t1
+    add $t0, $t0, $t2
+    move $v0, $t0
+    jr $ra
 ##############################################################################
 # Border Functions 
 ##############################################################################
-paint_border:
+initialize_game_space:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
@@ -96,7 +136,6 @@ paint_border:
     lw $a2, WHITE
     jal draw_horizontal_line
     
-    
     # draw bottom border
     lw $a0, ADDR_COLUMNS
     li $a1, WIDTH
@@ -106,33 +145,75 @@ paint_border:
     sll $t0, $t0, 7
     add $a0, $a0, $t0
     jal draw_horizontal_line
+    # black out rest of space
+    jal initialize_to_black
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
     
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    jr $ra
+initialize_to_black:
+    la $t0, ACTIVE_GAME_SPACE   
+    li $t1, 0                   
+    li $t2, 128                 
+    li $t3, 0x000000   
 
-# t6: row counter
-paint_background:
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    add $t6, $zero, $zero # row counter
-paint_bg_row_loop:
-    beq $t6, HEIGHT, end_paint_background
-    addi $t7, $zero, 128
-    mult $t7, $t6
-    mflo $t7
-    lw $a0, ADDR_COLUMNS # intializing first argument for starting point (beginning of row)
-    add $a0, $a0, $t7
-    addi $a0, $a0, 4 # skip left border pixel
-    li $a1, WIDTH # setting second argument to width
-    li $a2, 0x000000 # setting third argument to black
-    jal draw_horizontal_line
-    addi $t6, $t6, 1
-    j paint_bg_row_loop
-end_paint_background:
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
+black_loop:
+    beq $t1, $t2, end_black     
+    sll $t4, $t1, 2             
+    add $t5, $t0, $t4           
+    sw $t3, 0($t5)              
+    addi $t1, $t1, 1            
+    j black_loop
+end_black:
     jr $ra
+    
+# a0: game space address
+# a1: start point to display columns
+draw_game_space:
+    addi $sp, $sp, -20
+    li $s0, 1
+    li $s1, 1
+    li $s2, WIDTH
+    li $s3, HEIGHT
+    addi $s3, $s3, -1 #off by one
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    j outer_draw_game_space_loop
+    outer_draw_game_space_loop:
+        li $s0, 1
+        sw $s0, 4($sp)
+        lw $s1, 8($sp)
+        lw $s3, 16($sp)
+        beq $s1, $s3, exit_outer_draw_game_space_loop
+        j inner_draw_game_space_loop
+        inner_draw_game_space_loop:
+            lw $s0, 4($sp)
+            lw $s2, 12($sp)
+            beq $s0, $s2, exit_inner_draw_game_space_loop
+            move $a0, $s0
+            move $a1, $s1
+            jal convert_board_coordinates_to_gamespace_address
+            move $t6, $v0
+            jal convert_board_coordinates_to_display_address
+            move $t7, $v0
+            lw $t8, 0($t6)
+            sw $t8, 0($t7)
+            lw $s0, 4($sp)
+            addi $s0, $s0, 1
+            sw $s0, 4($sp)
+            j inner_draw_game_space_loop
+        exit_inner_draw_game_space_loop:
+            lw $s1, 8($sp)
+            addi $s1, $s1, 1
+            sw $s1, 8($sp)
+            j outer_draw_game_space_loop
+    exit_outer_draw_game_space_loop:
+        lw $ra, 0($sp)
+        addi $sp, $sp, 20
+        jr $ra
 
 # $a0: starting pixel
 # $a1: height
@@ -209,16 +290,10 @@ generate_drop_column:
 #a0: column data address
 #a1: pointer address for top left corner of box
 draw_drop_column:
-    lw $t0, 0($a1)
+    lw $t0, ADDR_COLUMNS
     lw $t1, 0($a0) # xpos
     lw $t2, 4($a0) # ypos
     sll $t1, $t1, 2
-    # li $t3, 4
-    # mult $t1, $t3
-    # mflo $t1
-    # li $t3, 128
-    # mult $t2, $t3
-    # mflo $t2
     sll $t2, $t2, 7
     lw $t3, 8($a0)
     lw $t4, 12($a0)
@@ -231,21 +306,326 @@ draw_drop_column:
     sw $t5, 256($t0)
     jr $ra
     
+####################################################################
+# Collision Detection
+####################################################################
+
+######################################
+#a0: column data address
+#a1: left / right = 0 / 1 
+#a2: game space address
+# return $v0: 1/0 for success / failure
+can_move_column_left_or_right:
+    addi $sp, $sp, -16
+    sw $ra, 12($sp)
+    sw $a0, 8($sp)
+    sw $a1, 4($sp)
+    sw $a2, 0($sp)
+    move $t0, $a1
+    move $a1, $a2
+    beq $t0, $zero, can_move_column_left
+    j can_move_column_right
     
-game_loop:
-    # 1a. Check if key has been pressed
+    
+# a0: column data address
+# a1: game space address
+can_move_column_left:
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    addi $t2, $t0, -1
+    beq $t2, $zero, invalid_move
+    addi $a0, $t0, -1
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    li $v0, 1
+    j return_check_move_to_caller
+
+can_move_column_right:
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    addi $t0, $t0, 1
+    li $t2, WIDTH
+    beq $t0, $t2, invalid_move
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    addi $a1, $a1, 1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_move
+    li $v0, 1
+    j return_check_move_to_caller
+
+return_check_move_to_caller:
+    lw $ra, 12($sp)
+    addi $sp, $sp, 16
+    jr $ra
+
+invalid_move:
+    li $v0, 0
+    j return_check_move_to_caller
+    
+#a0: column data address
+#a1: gamespace data address
+#return v0: 1 / 0 depending on success / fail, IF there is empty space underneath the column
+can_move_column_down:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    li $t2, HEIGHT
+    addi $t2, $t2, -4
+    beq $t1, $t2, invalid_drop_down
+    move $a0, $t0
+    move $a1, $t1
+    addi $a1, $a1, 3 # check for the 3rd down from head position
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_drop_down
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v0, 1
+    jr $ra
+    
+invalid_drop_down:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v0, 0
+    jr $ra
+
+#a0: column data address
+#a1: gamespace data address
+#return v0: 1 / 0 depending on success / fail, IF there is empty space underneath the column
+is_column_on_top_of_block:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    li $t2, HEIGHT
+    addi $t2, $t2, -4
+    beq $t1, $t2, invalid_drop_down
+    move $a0, $t0
+    move $a1, $t1
+    addi $a1, $a1, 3 # check for the 3rd down from head position
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t3, 0($v0)
+    bne $t3, $zero, invalid_drop_down
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    li $v0, 1
+    jr $ra
+###################################################################
+# Board modification
+###################################################################
+# a0: column data address
+place_column_in_game_space:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    lw $t3, 8($a0) # top color
+    sw $t3, 0($v0)
+    addi $t1, $t1, 1
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t0, 0($a0)
+    lw $t1, 4($a0)
+    lw $t3, 12($a0) # top color
+    sw $t3, 0($v0)
+    addi $t1, $t1, 2
+    move $a0, $t0
+    move $a1, $t1
+    jal convert_board_coordinates_to_gamespace_address
+    lw $a0, 4($sp)
+    lw $t3, 16($a0)
+    sw $t3, 0($v0)
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+    
+# a0: game space address  
+deletion_algorithm:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    li $s5, 0
+    li $s6, 128
+mark_delete_bits_loop:
+    beq $s5, $s6, end_deletion_algorithm
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_horizontal
+    addi $s5, $s5, 1
+    j mark_delete_bits_loop
+end_deletion_algorithm:
+    jal delete_values_from_mask
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
+
+delete_values_from_mask:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $t0, ACTIVE_GAME_SPACE
+    la $t1, DELETE_SPACES_MASK
+    li $t2, 0                   
+    li $t3, 128
+delete_loop:
+    beq $t2, $t3, stop_delete
+    sll $t4, $t2, 2 # addr for active-game-space since its 4 bytes
+    add $t5, $t1, $t2
+    lb $t7, 0($t5)
+    bne $t7, $zero, delete_bit_from_game_space
+    addi $t2, $t2, 1
+    j delete_loop
+delete_bit_from_game_space:
+    add $t6, $t0, $t4
+    sw $zero, 0($t6)
+    sb $zero, 0($t5)
+    addi $t2, $t2, 1
+    j delete_loop
+stop_delete:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos
+#a3: root color
+# count # of matching consecutive in horizontal row. if >= 3, mark for deletion.
+mark_delete_consecutive_horizontal:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $a1, 8($sp)
+    sw $a2, 12($sp)
+    sw $a3, 16($sp)
+    beq $a3, $zero, end_mark_consecutive_horizontal
+check_right_horizontal:
+    li $s1, 0
+    li $t3, WIDTH
+    lw $t4, 8($sp)
+    addi $t4, $t4, 1
+check_right_horizontal_loop:
+    beq $t4, $t3, check_left_horizontal
+    move $a0, $t4
+    lw $a1, 12($sp)
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t5, 0($v0)
+    lw $t6, 16($sp)
+    bne $t6, $t5, check_left_horizontal
+    addi $s1, $s1, 1
+    addi $t4, $t4, 1
+    j check_right_horizontal_loop
+check_left_horizontal:
+    li $s2, 0
+    lw $t4, 8($sp)
+    addi $t4, $t4, -1
+check_left_horizontal_loop:
+    beq $t4, $zero, evaluate_delete_consecutive_horizontal
+    move $a0, $t4
+    lw $a1, 12($sp)
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t5, 0($v0)
+    lw $t6, 16($sp)
+    bne $t6, $t5, evaluate_delete_consecutive_horizontal
+    addi $s2, $s2, 1
+    addi $t4, $t4, -1
+    j check_left_horizontal_loop
+evaluate_delete_consecutive_horizontal:
+    # t1, t2 represent the counts on left and right
+    add $s3, $s1, $s2
+    li $t5, 1
+    sgt $t4, $s3, $t5
+    beq $t4, $zero, end_mark_consecutive_horizontal
+    # mark the elements
+mark_right_consecutive_horizontal_loop:
+    beq $s1, $zero, mark_left_consecutive_horizontal_loop
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    add $a0, $a0, $s1
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s1, $s1, -1
+    j mark_right_consecutive_horizontal_loop
+
+mark_left_consecutive_horizontal_loop:
+    beq $s2, $zero, end_mark_consecutive_horizontal
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    sub $a0, $a0, $s2
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s2, $s2, -1
+    j mark_left_consecutive_horizontal_loop
+    
+end_mark_consecutive_horizontal:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+    
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos 
+
+# check_left_horizontal_for_consecutive:
+
+# check_right_horizontal_for_consecutive:
+
+
+    
+# # a0: game space address
+# # return $v0: # of elements that successfully fell
+# board_gravity:
+    
+
+##################################################################
+# Keyboard Inputs
+
+###################################################################
+# a0: keyboard input
+# a1: 
+keyboard_input:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
     lw $t0, ADDR_KBRD
     lw $t8, 0($t0)
-    # 1b. Check which key has been pressed
-    beq $t8, 1, keyboard_input
-    j no_key
-    # 2a. Check for collisions
-	# 2b. Update locations (capsules)
-	# 3. Draw the screen
-	# 4. Sleep
-    # 5. Go back to Step 1
-
-keyboard_input:
+    beq $t8, $zero, clean_up_keyboard_input
     # check which key was pressed
     lw $t2, 4($t0)
     beq $t2, 0x61, move_left  # 'a'
@@ -253,25 +633,41 @@ keyboard_input:
     beq $t2, 0x73, move_down  # 's'
     beq $t2, 0x77, shuffle    # 'w'
     beq $t2, 0x71, Exit       # 'q'
-    j no_key                  # also ignore unknown key
+    j clean_up_keyboard_input                  # also ignore unknown key
 
 move_left:
+    la $a0, ACTIVE_COLUMN
+    li $a1, 0
+    la $a2, ACTIVE_GAME_SPACE
+    jal can_move_column_left_or_right
+    move $t0, $v0
+    beq $t0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, -1 # subtract 1 from x
     sw $t1, ACTIVE_COLUMN # update x value
-    j no_key
+    j clean_up_keyboard_input
 
 move_right:
+    la $a0, ACTIVE_COLUMN
+    li $a1, 1
+    la $a2, ACTIVE_GAME_SPACE
+    jal can_move_column_left_or_right
+    move $t0, $v0
+    beq $t0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN # load x value
     addi $t1, $t1, 1 # add 1 to x
     sw $t1, ACTIVE_COLUMN # update x value
-    j no_key
-
+    j clean_up_keyboard_input
+    
 move_down:
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal can_move_column_down
+    beq $v0, $zero, clean_up_keyboard_input
     lw $t1, ACTIVE_COLUMN + 4 # load y value
     addi $t1, $t1, 1 # add 1 to y
     sw $t1, ACTIVE_COLUMN + 4 # update y value
-    j no_key
+    j clean_up_keyboard_input
 
 shuffle:
     lw $t1, ACTIVE_COLUMN + 8 # load top colour
@@ -282,19 +678,51 @@ shuffle:
     sw $t2, ACTIVE_COLUMN + 16
     sw $t3, ACTIVE_COLUMN + 8
     
-    j no_key
+    j clean_up_keyboard_input
+
+clean_up_keyboard_input:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+	
+game_loop:
+    # 1a. Check if key has been pressed
+    jal keyboard_input
+    la $a0, ACTIVE_COLUMN
+    la $a1, ACTIVE_GAME_SPACE
+    jal is_column_on_top_of_block
+    beq $v0, $zero, collision_occured    
+    j render_screen
+	
+collision_occured: 
+    la $a0, ACTIVE_COLUMN
+    jal place_column_in_game_space
     
-no_key:
-    jal paint_background # wipe screen
-	jal paint_border # redraw borders
+    # delete and clean up board
+    
+    
+    
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
+	# 2b. Update locations (capsules)
+	la $a0, ACTIVE_GAME_SPACE
+	jal deletion_algorithm
+    j render_screen
+    
+render_screen:
+	# 3. Draw the screen
+    jal draw_game_space
 	la $a0, ACTIVE_COLUMN
-	la $a1, ADDR_COLUMNS
+	lw $a1, ADDR_COLUMNS
 	jal draw_drop_column # draw column at new position
+	# 4. Sleep
 	li $v0, 32
 	li $a0, 16
 	syscall
+    # 5. Go back to Step 1
 	j game_loop
-	
+    
 Exit:
     li $v0, 10 # terminate the program gracefully
     syscall
