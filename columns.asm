@@ -541,7 +541,7 @@ apply_board_gravity_outer_loop:
     li $s6, 111 # assuming 16 x 8 bits, last row doesnt count / cant be pushed down, last last row is techinically white space
     li $t1, 0
     apply_board_gravity_inner_loop:
-        beq $s5, $s6, end_apply_board_gravity_outer_loop
+        beq $s5, $s6, end_apply_board_gravity_inner_loop
         lw $t2, 4($sp)
         sll $t3, $s6, 2
         add $t4, $t2, $t3
@@ -1094,6 +1094,9 @@ clean_up_keyboard_input:
     addi $sp, $sp, 4
     jr $ra
 
+################################################################################
+# game loop logic
+###############################################################################
 	
 game_loop:
     # 1a. Check if key has been pressed
@@ -1105,16 +1108,16 @@ game_loop:
     j render_screen
 	
 collision_occured: 
+    # evaluate if head of column is out of bounds : then game over
     la $a0, ACTIVE_COLUMN
     jal place_column_in_game_space
-    
-    # delete and clean up board
-    la $a0, ACTIVE_COLUMN
-    jal generate_drop_column
 	# 2b. Update locations (capsules)
 	la $a0, ACTIVE_GAME_SPACE
 	jal deletion_algorithm
-    
+
+    # delete and clean up board
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
 
     j render_screen
     
@@ -1165,6 +1168,9 @@ skip_gravity:
 	
 	# 5. Go back to Step 1
 	j game_loop
+    
+game_over:
+    # shahmeer you fill in here
     
 Exit:
     li $v0, 10 # terminate the program gracefully
