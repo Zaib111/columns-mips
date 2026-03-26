@@ -1015,6 +1015,26 @@ end_mark_consecutive_left_diagonal:
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
+
+#a0: game space addresss
+check_game_over:
+    li $t0, 8
+    li $t1, 16
+check_game_over_loop:
+    beq $t0, $t1, report_no_game_over
+    sll $t2, $t0, 2
+    add $t3, $a0, $t2
+    lw $t4, 0($t3)
+    bne $t4, $zero, report_game_over
+    addi $t0, $t0, 1
+    j check_game_over_loop
+
+report_no_game_over:
+    li $v0, 0
+    jr $ra
+report_game_over:
+    li $v0, 1
+    jr $ra
 ##################################################################
 # Keyboard Inputs
 
@@ -1114,7 +1134,10 @@ collision_occured:
 	# 2b. Update locations (capsules)
 	la $a0, ACTIVE_GAME_SPACE
 	jal deletion_algorithm
-
+	# if there is some value still in the top row, then it means game over
+	la $a0, ACTIVE_GAME_SPACE
+    jal check_game_over
+    bne $v0, $zero, game_over
     # delete and clean up board
     la $a0, ACTIVE_COLUMN
     jal generate_drop_column
@@ -1168,9 +1191,12 @@ skip_gravity:
 	
 	# 5. Go back to Step 1
 	j game_loop
-    
+
+
+
 game_over:
     # shahmeer you fill in here
+    j Exit
     
 Exit:
     li $v0, 10 # terminate the program gracefully
