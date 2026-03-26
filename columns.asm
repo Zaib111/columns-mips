@@ -507,7 +507,7 @@ place_column_in_game_space:
     lw $t3, 16($a0)
     sw $t3, 0($v0)
     lw $ra, 0($sp)
-    addi $sp, $sp, 4
+    addi $sp, $sp, 8
     jr $ra
     
 # a0: game space address  
@@ -544,6 +544,7 @@ delete_values_from_mask:
     la $t1, DELETE_SPACES_MASK
     li $t2, 0                   
     li $t3, 128
+    li $t9, 0 # intialize delete indicator to 0
 delete_loop:
     beq $t2, $t3, stop_delete
     sll $t4, $t2, 2 # addr for active-game-space since its 4 bytes
@@ -556,12 +557,22 @@ delete_bit_from_game_space:
     add $t6, $t0, $t4
     sw $zero, 0($t6)
     sb $zero, 0($t5)
+    li $t9, 1 # tracking if we are deleting
     addi $t2, $t2, 1
     j delete_loop
 stop_delete:
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    jr $ra
+    beq $t9, $zero, skip_delete_sound
+    # play sound
+    li $v0, 31
+    li $a0, 60    
+    li $a1, 200   
+    li $a2, 0     
+    li $a3, 100
+    syscall
+    skip_delete_sound:
+        lw $ra, 0($sp)
+        addi $sp, $sp, 4
+        jr $ra
 
 #a0: game space address
 #a1: root x-pos
@@ -719,6 +730,14 @@ shuffle:
     sw $t1, ACTIVE_COLUMN + 12 
     sw $t2, ACTIVE_COLUMN + 16
     sw $t3, ACTIVE_COLUMN + 8
+    
+    # play sound
+    li $v0, 31
+    li $a0, 72    # high pitch note
+    li $a1, 100   # 100ms duration
+    li $a2, 0     # instrument
+    li $a3, 100   # volume
+    syscall
     
     j clean_up_keyboard_input
 
