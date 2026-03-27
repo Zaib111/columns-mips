@@ -1060,19 +1060,52 @@ keyboard_input:
     j clean_up_keyboard_input                  # also ignore unknown key
 
 pause:
-    # print message to console
-    li $v0, 4          
-    la $a0, paused_msg
-    syscall
-    
-    # read a character
-    li $v0, 12        
-    syscall
-    
-    beq 
-    
-    
+    # fill entire screen grey for pause message
+    lw $a0, ADDR_COLUMNS
+    addi $a0, $a0, 132 # skip top border and get inside borders
+    li $a1, 7
+    li $a2, 0x888888
+    li $s0, 0 # counter variable for filling
+fill_grey:
+    beq $s0, 14, filled_grey # only go till before bottom border
+    addi $sp, $sp, -4
+    sw $a0, 0($sp)
+    jal draw_horizontal_line
+    lw $a0, 0($sp)
+    addi $sp, $sp, 4
+    addi $a0, $a0, 128
+    addi $s0, $s0, 1
+    j fill_grey
+filled_grey:
 
+    # draw left bar
+    lw $a0, ADDR_COLUMNS
+    addi $a0, $a0, 128    # skip top border
+    addi $a0, $a0, 512    # move down 4 rows
+    addi $a0, $a0, 12     # x=3
+    li $a1, 6             # 6 units tall
+    li $a2, 0xffffff
+    jal draw_vertical_line
+    
+    # draw right bar
+    lw $a0, ADDR_COLUMNS
+    addi $a0, $a0, 128
+    addi $a0, $a0, 512
+    addi $a0, $a0, 20     # x=5
+    li $a1, 6
+    li $a2, 0xffffff
+    jal draw_vertical_line
+    
+    # check input again
+    lw $t0, ADDR_KBRD
+    lw $t1, 0($t0)
+    beq $t1, $zero, filled_grey # wait for key press
+    lw $t2, 4($t0) # check which key was pressed
+    bne $t2, 0x70, filled_grey     # 'p'
+    # restore game space
+    jal draw_game_space        # redraws settled gems
+    j clean_up_keyboard_input
+    
 move_left:
     la $a0, ACTIVE_COLUMN
     li $a1, 0
