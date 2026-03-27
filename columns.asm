@@ -1278,12 +1278,12 @@ fill_red:
     j fill_red
 
 draw_x:
-    # Draw the \ diagonal: (x=1,y=4) down to (x=6,y=9)
+    # Draw the \ diagonal: (x=1,y=5) down to (x=6,y=9)
     # Each step: x += 1 col (4 bytes), y += 1 row (128 bytes)
     lw $t0, ADDR_COLUMNS
-    # Starting position: col 1, row 4
+    # Starting position: col 1, row 5
     addi $t0, $t0, 4      # col 1
-    addi $t0, $t0, 512    # row 4
+    addi $t0, $t0, 640    # row 5
     li $t1, 0xff4444      # bright red for X
     li $t2, 6             # 6 pixels per diagonal
     li $t3, 0             # counter
@@ -1297,10 +1297,10 @@ draw_backslash_loop:
     j draw_backslash_loop
 
 draw_forward_slash:
-    # Draw the / diagonal: (x=6,y=4) down to (x=1,y=9)
+    # Draw the / diagonal: (x=6,y=5) down to (x=1,y=9)
     lw $t0, ADDR_COLUMNS
     addi $t0, $t0, 24     # col 6
-    addi $t0, $t0, 512    # row 4
+    addi $t0, $t0, 640    # row 5
     li $t3, 0
 
 draw_slash_loop:
@@ -1323,7 +1323,7 @@ restart_or_quit:
     jal initialize_game_space
     la $a0, ACTIVE_COLUMN
     jal generate_drop_column
-    # reset gravity
+    # reset variables
     sw $zero, GRAVITY_COUNTER
     li $t0, 60
     sw $t0, GRAVITY_THRESHOLD
