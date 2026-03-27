@@ -49,8 +49,6 @@ MINIMUM_GRAVITY_THRESHOLD:
     .word 10
 menu_msg:
     .asciiz "Select difficulty:\n1. Easy\n2. Medium\n3. Hard\n"
-paused_msg:
-    .asciiz "PAUSED (Press 'p' to resume)\n"
 # Constant Data
 
 .eqv HEIGHT 16
@@ -1181,6 +1179,15 @@ collision_occured:
     # evaluate if head of column is out of bounds : then game over
     la $a0, ACTIVE_COLUMN
     jal place_column_in_game_space
+    
+    # play drop sound
+    li $v0, 31
+    li $a0, 40
+    li $a1, 100
+    li $a2, 0
+    li $a3, 100
+    syscall
+    
 	# 2b. Update locations (capsules)
 	la $a0, ACTIVE_GAME_SPACE
 	jal deletion_algorithm
@@ -1243,10 +1250,85 @@ skip_gravity:
 	j game_loop
 
 
-
 game_over:
     # shahmeer you fill in here
-    j Exit
+    # play sound
+    li $v0, 31
+    li $a0, 60    
+    li $a1, 200   
+    li $a2, 0     
+    li $a3, 100
+    syscall
+    
+    # fill entire screen red for game over message
+    lw $a0, ADDR_COLUMNS
+    addi $a0, $a0, 132 # skip top border and get inside borders
+    li $a1, 7
+    li $a2, 0x880000 # red
+    li $s0, 0 # counter variable for filling
+fill_red:
+    beq $s0, 14, draw_x # only go till before bottom border
+    addi $sp, $sp, -4
+    sw $a0, 0($sp)
+    jal draw_horizontal_line
+    lw $a0, 0($sp)
+    addi $sp, $sp, 4
+    addi $a0, $a0, 128
+    addi $s0, $s0, 1
+    j fill_red
+
+draw_x:
+    # Draw the \ diagonal: (x=1,y=4) down to (x=6,y=9)
+    # Each step: x += 1 col (4 bytes), y += 1 row (128 bytes)
+    lw $t0, ADDR_COLUMNS
+    # Starting position: col 1, row 4
+    addi $t0, $t0, 4      # col 1
+    addi $t0, $t0, 512    # row 4
+    li $t1, 0xff4444      # bright red for X
+    li $t2, 6             # 6 pixels per diagonal
+    li $t3, 0             # counter
+
+draw_backslash_loop:
+    beq $t3, $t2, draw_forward_slash
+    sw $t1, 0($t0)
+    addi $t0, $t0, 4      # next col
+    addi $t0, $t0, 128    # next row
+    addi $t3, $t3, 1
+    j draw_backslash_loop
+
+draw_forward_slash:
+    # Draw the / diagonal: (x=6,y=4) down to (x=1,y=9)
+    lw $t0, ADDR_COLUMNS
+    addi $t0, $t0, 24     # col 6
+    addi $t0, $t0, 512    # row 4
+    li $t3, 0
+
+draw_slash_loop:
+    beq $t3, $t2, restart_or_quit
+    sw $t1, 0($t0)
+    addi $t0, $t0, -4     # prev col (-1)
+    addi $t0, $t0, 128    # next row (+1)
+    addi $t3, $t3, 1
+    j draw_slash_loop
+
+restart_or_quit:
+    lw $t0, ADDR_KBRD
+    lw $t1, 0($t0)
+    beq $t1, $zero, restart_or_quit # wait for key press
+    lw $t2, 4($t0) # check which key was pressed
+    beq $t2, 0x71, Exit     # 'q'
+    bne $t2, 0x72, restart_or_quit # 'r'
+    
+    # reset game logic to restart game
+    jal initialize_game_space
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
+    # reset gravity
+    sw $zero, GRAVITY_COUNTER
+    li $t0, 60
+    sw $t0, GRAVITY_THRESHOLD
+    sw $zero, TIME_COUNTER
+    j game_loop
     
 Exit:
     li $v0, 10 # terminate the program gracefully
