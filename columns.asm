@@ -49,6 +49,8 @@ MINIMUM_GRAVITY_THRESHOLD:
     .word 10
 menu_msg:
     .asciiz "Select difficulty:\n1. Easy\n2. Medium\n3. Hard\n"
+paused_msg:
+    .asciiz "PAUSED (Press 'p' to resume)\n"
 # Constant Data
 
 .eqv HEIGHT 16
@@ -750,8 +752,23 @@ keyboard_input:
     beq $t2, 0x64, move_right # 'd'
     beq $t2, 0x73, move_down  # 's'
     beq $t2, 0x77, shuffle    # 'w'
+    beq $t2, 0x70, pause      # 'p'
     beq $t2, 0x71, Exit       # 'q'
     j clean_up_keyboard_input                  # also ignore unknown key
+
+pause:
+    # print message to console
+    li $v0, 4          
+    la $a0, paused_msg
+    syscall
+    
+    # read a character
+    li $v0, 12        
+    syscall
+    
+    beq 
+    
+    
 
 move_left:
     la $a0, ACTIVE_COLUMN
