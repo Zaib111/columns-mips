@@ -517,35 +517,60 @@ deletion_algorithm:
     addi $sp, $sp, -8
     sw $ra, 0($sp)
     sw $a0, 4($sp)
-    li $s5, 0
-    li $s6, 128
-mark_delete_bits_loop:
-    beq $s5, $s6, end_deletion_algorithm
-    lw $a0, 4($sp)
-    li $t6, 8
-    div $s5, $t6
-    mfhi $a1
-    mflo $a2
-    sll $t7, $s5, 2
-    add $t8, $a0, $t7
-    lw $a3, 0($t8)
-    jal mark_delete_consecutive_horizontal
-    lw $a0, 4($sp)
-    li $t6, 8
-    div $s5, $t6
-    mfhi $a1
-    mflo $a2
-    sll $t7, $s5, 2
-    add $t8, $a0, $t7
-    lw $a3, 0($t8)
-    jal mark_delete_consecutive_vertical
-    addi $s5, $s5, 1
-    j mark_delete_bits_loop
-end_deletion_algorithm:
+deletion_algorithm_loop:
+    la $a0, ACTIVE_GAME_SPACE
+    jal mark_delete_bits
+    beq $v0, $zero, end_deletion_algorithm
     jal delete_values_from_mask
+    la $a0, ACTIVE_GAME_SPACE
+    jal apply_board_gravity
+    j deletion_algorithm_loop
+
+end_deletion_algorithm:
     lw $ra, 0($sp)
     addi $sp, $sp, 8
     jr $ra
+
+# a0: game space address
+apply_board_gravity:
+    addi $sp, $sp, -8
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    # loop through all possible spaces, if not empty, check underneath and move if empty space underneath. if more than one bit was moved,
+    # do it again until nothing remains.
+apply_board_gravity_outer_loop:
+    li $s5, 0
+    li $s6, 111 # assuming 16 x 8 bits, last row doesnt count / cant be pushed down, last last row is techinically white space
+    li $t1, 0
+    apply_board_gravity_inner_loop:
+        beq $s5, $s6, end_apply_board_gravity_inner_loop
+        lw $t2, 4($sp)
+        sll $t3, $s6, 2
+        add $t4, $t2, $t3
+        lw $t5, 0($t4) # current bit
+        addi $t7, $s6, 8
+        sll $t7, $t7, 2
+        add $t8, $t2, $t7
+        lw $t6, 0($t8) # bit one row down
+        beq $t5, $zero, skip_apply_board_gravity_inner_loop
+        bne $t6, $zero, skip_apply_board_gravity_inner_loop
+        sw $t5, 0($t8) # move down
+        sw $zero, 0($t4) # set current to empty
+        addi $s6, $s6, -1
+        addi $t1, $t1, 1 # increment count of moved down
+        j apply_board_gravity_inner_loop
+    skip_apply_board_gravity_inner_loop:
+        addi $s6, $s6, -1
+        j apply_board_gravity_inner_loop
+    end_apply_board_gravity_inner_loop:
+        beq $t1, $zero, end_apply_board_gravity_outer_loop
+        # at this point, at least one bit has been moved
+        j apply_board_gravity_outer_loop
+end_apply_board_gravity_outer_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 8
+    jr $ra
+
 
 delete_values_from_mask:
     addi $sp, $sp, -4
@@ -584,11 +609,82 @@ stop_delete:
         addi $sp, $sp, 4
         jr $ra
 
+
+#a0: game space address
+# return $v0: 1 / 0 whether to trigger board gravity and to re evaluate for deletion again
+mark_delete_bits:
+    addi $sp, $sp, -12
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $zero, 8($sp)
+    li $s5, 0
+    li $s6, 128
+mark_delete_bits_loop:
+    beq $s5, $s6, end_mark_delete_bits_loop
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_horizontal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_vertical
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_right_diagonal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
+    lw $a0, 4($sp)
+    li $t6, 8
+    div $s5, $t6
+    mfhi $a1
+    mflo $a2
+    sll $t7, $s5, 2
+    add $t8, $a0, $t7
+    lw $a3, 0($t8)
+    jal mark_delete_consecutive_left_diagonal
+    lw $t0, 8($sp)
+    add $t0, $t0, $v0
+    sw $t0, 8($sp)
+    addi $s5, $s5, 1
+    j mark_delete_bits_loop
+end_mark_delete_bits_loop:
+    lw $ra, 0($sp)
+    lw $t0, 8($sp)
+    sgt $v0, $t0, $zero# more than one bit deleted
+    addi $sp, $sp, 12
+    jr $ra
+
+
 #a0: game space address
 #a1: root x-pos
 #a2: root y-pos
 #a3: root color
 # count # of matching consecutive in horizontal row. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_horizontal:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -656,6 +752,8 @@ mark_left_consecutive_horizontal_loop:
     addi $s2, $s2, -1
     j mark_left_consecutive_horizontal_loop
 end_mark_consecutive_horizontal:
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
@@ -664,7 +762,8 @@ end_mark_consecutive_horizontal:
 #a1: root x-pos
 #a2: root y-pos
 #a3: root color
-# count # of matching consecutive in horizontal row. if >= 3, mark for deletion.
+# count # of matching consecutive in vertical column. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
 mark_delete_consecutive_vertical:
     addi $sp, $sp, -20
     sw $ra, 0($sp)
@@ -672,7 +771,7 @@ mark_delete_consecutive_vertical:
     sw $a1, 8($sp)
     sw $a2, 12($sp)
     sw $a3, 16($sp)
-    beq $a3, $zero, end_mark_consecutive_horizontal
+    beq $a3, $zero, end_mark_consecutive_vertical
 check_up_vertical:
     li $s1, 0
     lw $t4, 12($sp)
@@ -730,10 +829,214 @@ mark_down_consecutive_vertical_loop:
     addi $s2, $s2, -1
     j mark_down_consecutive_vertical_loop
 end_mark_consecutive_vertical:
+    li $t5, 1
+    sgt $v0, $s3, $t5
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+    
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos
+#a3: root color
+# count # of matching consecutive in diagonal going top left to bottom right. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
+mark_delete_consecutive_right_diagonal:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)
+    sw $a1, 8($sp)
+    sw $a2, 12($sp)
+    sw $a3, 16($sp)
+    beq $a3, $zero, end_mark_consecutive_right_diagonal
+check_up_left_consecutive_diagonal:
+    li $s1, 0
+    lw $t4, 8($sp)   # Current X
+    lw $t5, 12($sp)  # Current Y
+    addi $t4, $t4, -1
+    addi $t5, $t5, -1
+check_up_left_consecutive_diagonal_loop:
+    beq $t4, $zero, check_down_right_consecutive_diagonal
+    beq $t5, $zero, check_down_right_consecutive_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)  
+    bne $t7, $t8, check_down_right_consecutive_diagonal
+    
+    addi $s1, $s1, 1
+    addi $t4, $t4, -1
+    addi $t5, $t5, -1
+    j check_up_left_consecutive_diagonal_loop
+    
+check_down_right_consecutive_diagonal:
+    li $s2, 0
+    lw $t4, 8($sp)
+    lw $t5, 12($sp)
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+check_down_right_consecutive_diagonal_loop:
+    li $t9, WIDTH
+    beq $t4, $t9, evaluate_delete_consecutive_right_diagonal
+    li $t9, HEIGHT
+    beq $t5, $t9, evaluate_delete_consecutive_right_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)
+    bne $t7, $t8, evaluate_delete_consecutive_right_diagonal
+    addi $s2, $s2, 1
+    addi $t4, $t4, 1
+    addi $t5, $t5, 1
+    j check_down_right_consecutive_diagonal_loop
+    
+evaluate_delete_consecutive_right_diagonal:
+    add $s3, $s1, $s2
+    li $t5, 1
+    sgt $t4, $s3, $t5
+    beq $t4, $zero, end_mark_consecutive_right_diagonal
+mark_up_left_consecutive_diagonal_loop:
+    beq $s1, $zero, mark_down_right_consecutive_diagonal_loop
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    sub $a0, $a0, $s1
+    sub $a1, $a1, $s1
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s1, $s1, -1
+    j mark_up_left_consecutive_diagonal_loop
+mark_down_right_consecutive_diagonal_loop:
+    beq $s2, $zero, end_mark_consecutive_right_diagonal
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    add $a0, $a0, $s2
+    add $a1, $a1, $s2
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s2, $s2, -1
+    j mark_down_right_consecutive_diagonal_loop
+end_mark_consecutive_right_diagonal:
+    li $t5, 1
+    sgt $v0, $s3, $t5
     lw $ra, 0($sp)
     addi $sp, $sp, 20
     jr $ra
 
+#a0: game space address
+#a1: root x-pos
+#a2: root y-pos
+#a3: root color
+# count # of matching consecutive in diagonal going bottom left to top right. if >= 3, mark for deletion.
+# return $v0: # of deleted bits marked
+mark_delete_consecutive_left_diagonal:
+    addi $sp, $sp, -20
+    sw $ra, 0($sp)
+    sw $a0, 4($sp)   # Gamespace base
+    sw $a1, 8($sp)   # Root X
+    sw $a2, 12($sp)  # Root Y
+    sw $a3, 16($sp)  # Root Color
+    beq $a3, $zero, end_mark_consecutive_left_diagonal
+    
+check_up_right_consecutive_diagonal:
+    li $s1, 0
+    lw $t4, 8($sp)   # Current X
+    lw $t5, 12($sp)  # Current Y
+    addi $t4, $t4, 1
+    addi $t5, $t5, -1
+check_up_right_consecutive_diagonal_loop:
+    li $t9, WIDTH
+    beq $t4, $t9, check_down_left_consecutive_diagonal
+    beq $t5, $zero, check_down_left_consecutive_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)  
+    bne $t7, $t8, check_down_left_consecutive_diagonal
+    
+    addi $s1, $s1, 1
+    addi $t4, $t4, 1
+    addi $t5, $t5, -1
+    j check_up_right_consecutive_diagonal_loop
+    
+check_down_left_consecutive_diagonal:
+    li $s2, 0
+    lw $t4, 8($sp)
+    lw $t5, 12($sp)
+    addi $t4, $t4, -1
+    addi $t5, $t5, 1
+check_down_left_consecutive_diagonal_loop:
+    li $t9, HEIGHT
+    beq $t4, $zero, evaluate_delete_consecutive_left_diagonal
+    beq $t5, $t9, evaluate_delete_consecutive_left_diagonal
+    move $a0, $t4
+    move $a1, $t5
+    jal convert_board_coordinates_to_gamespace_address
+    lw $t7, 0($v0)
+    lw $t8, 16($sp)
+    bne $t7, $t8, evaluate_delete_consecutive_left_diagonal
+    addi $s2, $s2, 1
+    addi $t4, $t4, -1
+    addi $t5, $t5, 1
+    j check_down_left_consecutive_diagonal_loop
+    
+evaluate_delete_consecutive_left_diagonal:
+    add $s3, $s1, $s2
+    li $t5, 1
+    sgt $t4, $s3, $t5
+    beq $t4, $zero, end_mark_consecutive_right_diagonal
+mark_up_right_consecutive_diagonal_loop:
+    beq $s1, $zero, mark_down_left_consecutive_diagonal_loop
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    add $a0, $a0, $s1
+    sub $a1, $a1, $s1
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s1, $s1, -1
+    j mark_up_right_consecutive_diagonal_loop
+mark_down_left_consecutive_diagonal_loop:
+    beq $s2, $zero, end_mark_consecutive_left_diagonal
+    lw $a0, 8($sp)
+    lw $a1, 12($sp)
+    sub $a0, $a0, $s2
+    add $a1, $a1, $s2
+    jal convert_board_coordinates_to_mask_address
+    li $t7, 1
+    sb $t7, 0($v0)
+    addi $s2, $s2, -1
+    j mark_down_left_consecutive_diagonal_loop
+end_mark_consecutive_left_diagonal:
+    li $t5, 1
+    sgt $v0, $s3, $t5
+    lw $ra, 0($sp)
+    addi $sp, $sp, 20
+    jr $ra
+
+#a0: game space addresss
+check_game_over:
+    li $t0, 8
+    li $t1, 16
+check_game_over_loop:
+    beq $t0, $t1, report_no_game_over
+    sll $t2, $t0, 2
+    add $t3, $a0, $t2
+    lw $t4, 0($t3)
+    bne $t4, $zero, report_game_over
+    addi $t0, $t0, 1
+    j check_game_over_loop
+
+report_no_game_over:
+    li $v0, 0
+    jr $ra
+report_game_over:
+    li $v0, 1
+    jr $ra
 ##################################################################
 # Keyboard Inputs
 
@@ -828,6 +1131,9 @@ clean_up_keyboard_input:
     addi $sp, $sp, 4
     jr $ra
 
+################################################################################
+# game loop logic
+###############################################################################
 	
 game_loop:
     # 1a. Check if key has been pressed
@@ -839,16 +1145,19 @@ game_loop:
     j render_screen
 	
 collision_occured: 
+    # evaluate if head of column is out of bounds : then game over
     la $a0, ACTIVE_COLUMN
     jal place_column_in_game_space
-    
-    # delete and clean up board
-    la $a0, ACTIVE_COLUMN
-    jal generate_drop_column
 	# 2b. Update locations (capsules)
 	la $a0, ACTIVE_GAME_SPACE
 	jal deletion_algorithm
-    
+	# if there is some value still in the top row, then it means game over
+	la $a0, ACTIVE_GAME_SPACE
+    jal check_game_over
+    bne $v0, $zero, game_over
+    # delete and clean up board
+    la $a0, ACTIVE_COLUMN
+    jal generate_drop_column
 
     j render_screen
     
@@ -899,6 +1208,12 @@ skip_gravity:
 	
 	# 5. Go back to Step 1
 	j game_loop
+
+
+
+game_over:
+    # shahmeer you fill in here
+    j Exit
     
 Exit:
     li $v0, 10 # terminate the program gracefully
