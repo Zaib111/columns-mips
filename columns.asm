@@ -49,6 +49,12 @@ MINIMUM_GRAVITY_THRESHOLD:
     .word 10
 menu_msg:
     .asciiz "Select difficulty:\n1. Easy\n2. Medium\n3. Hard\n"
+# Queue of next 5 columns (each has 3 colors = 3 words)
+.align 2
+NEXT_COLUMNS:
+    .space 60    # 5 columns * 3 colors * 4 bytes
+NEXT_COLUMN_COUNT:
+    .word 5      # how many are queued (always keep at 5)
 # Constant Data
 
 .eqv HEIGHT 16
@@ -90,6 +96,10 @@ main:
     beq $v0, 0x33, set_hard
     j set_medium
     
+#############################################################################
+# Helper Functions
+#############################################################################
+    
 set_easy:
    li $t0, 120
    sw $t0, GRAVITY_THRESHOLD
@@ -109,16 +119,86 @@ set_hard:
 start_game: 
     jal initialize_game_space
 	la $a0, ACTIVE_COLUMN
+	jal init_queue
 	jal generate_drop_column
     j game_loop
     j Exit
 
-#############################################################################
-# Helper Functions
-#############################################################################
+# intialize column queue
+init_queue:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $t0, NEXT_COLUMNS
+    li $t1, 0
+init_queue_loop:
+    beq $t1, 15, end_init_queue_loop
+    addi $sp, $sp, -8
+    
+    sw $t0, 0($sp)          # save base address
+    sw $t1, 4($sp)          # save counter
+    jal generate_random_color
+    lw $t0, 0($sp)          
+    lw $t1, 4($sp)
+    addi $sp, $sp, 8
+    
+    sw $v0, 0($t0)
+    addi $t0, $t0, 4
+    addi $t1, $t1, 1
+    j init_queue_loop
+end_init_queue_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
+# draws the 5 upcoming columns in a preview panel to the right of the game field
+draw_preview_panel:
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    
+    la $t0, NEXT_COLUMNS    # start of queue
+    li $t1, 0               # entry counter (0-4)
+    
+    # panel starts at ADDR_COLUMNS + 12 units right (48 bytes) + 1 unit up (-128 bytes)
+    lw $t9, ADDR_COLUMNS
+    addi $t9, $t9, 48       # skip 9 units right
+    addi $t9, $t9, -128      # 1 unit up
+
+draw_preview_loop:
+    beq $t1, 5, end_draw_preview_loop
+    
+    # each entry takes 4 rows (3 gems + 1 gap)
+    li $t2, 4
+    mul $t2, $t1, $t2       # entry offset in rows
+    li $t3, 128             # bytes per row
+    mul $t2, $t2, $t3       # byte offset
+    add $t2, $t9, $t2       # display addr for this entry's top gem
+    
+    # load 3 colors for this entry
+    li $t3, 12              # 3 words * 4 bytes per entry
+    mul $t3, $t1, $t3
+    add $t4, $t0, $t3
+    lw $t5, 0($t4)          # top color
+    lw $t6, 4($t4)          # mid color
+    lw $t7, 8($t4)          # bottom color
+    
+    # draw 3 gems vertically
+    sw $t5, 0($t2)
+    sw $t6, 128($t2)
+    sw $t7, 256($t2)
+    
+    # gap row
+    sw $zero, 384($t2)
+    
+    addi $t1, $t1, 1
+    j draw_preview_loop
+
+end_draw_preview_loop:
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr $ra
+
 #a1: x-pos
 #a2: y-pos
-
 convert_board_coordinates_to_display_address:
     move $t0, $a0
     move $t1, $a1
@@ -304,29 +384,63 @@ generate_random_color:
 # a0: column data address
 # store base column data in ACTIVE_COLUMN
 generate_drop_column:
-    addi $sp, $sp, -8
-    sw $ra, 4($sp)
-    sw $a0, 0($sp)
-    jal generate_random_color
-    add $s0, $v0, $zero
-    jal generate_random_color
-    add $s1, $v0, $zero
-    jal generate_random_color
-    add $s2, $v0, $zero
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
     
-    lw $a0, 0($sp)
-    sw $s0, 8($a0)
-    sw $s1, 12($a0)
-    sw $s2, 16($a0)
-    # initialize to default position 
-    addi $t3, $zero, WIDTH
-    srl $t3, $t3, 2
-    sw $t3, 0($a0)
-    addi $t5, $zero, 1
-    sw $t5, 4($a0)
+    # pop front of queue into column colours
+    la $t0, NEXT_COLUMNS
+    la $t1, ACTIVE_COLUMN
+    lw $t2, 0($t0)
+    lw $t3, 4($t0)
+    lw $t4, 8($t0)
     
-    lw $ra, 4($sp)
-    addi $sp, $sp, 8
+    sw $t2, 8($t1)
+    sw $t3, 12($t1)
+    sw $t4, 16($t1)
+    
+    # reset position
+    li $t2, 2
+    sw $t2, 0($t1)
+    li $t2, 1
+    sw $t2, 4($t1)
+    
+    # shift queue left
+    addi $t5, $t0, 12 # t5 is the iterator
+    addi $t6, $t0, 0
+    addi $t7, $t0, 60
+shift_loop:
+    beq $t5, $t7, end_shift 
+    lw $t8, 0($t5)
+    sw $t8, 0($t6)
+    addi $t5, $t5, 4
+    addi $t6, $t6, 4
+    j shift_loop
+    
+end_shift:
+    # append to queue
+    jal generate_random_color
+    la $t0, NEXT_COLUMNS
+    sw $v0, 48($t0)
+    jal generate_random_color
+    la $t0, NEXT_COLUMNS
+    sw $v0, 52($t0)
+    jal generate_random_color
+    la $t0, NEXT_COLUMNS
+    sw $v0, 56($t0)
+    
+    # lw $a0, 0($sp)
+    # sw $s0, 8($a0)
+    # sw $s1, 12($a0)
+    # sw $s2, 16($a0)
+    # # initialize to default position 
+    # addi $t3, $zero, WIDTH
+    # srl $t3, $t3, 2
+    # sw $t3, 0($a0)
+    # addi $t5, $zero, 1
+    # sw $t5, 4($a0)
+    
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
     jr $ra
 
 #a0: column data address
@@ -1207,7 +1321,7 @@ render_screen:
 	la $a0, ACTIVE_COLUMN
 	lw $a1, ADDR_COLUMNS
 	jal draw_drop_column # draw column at new position
-	
+	jal draw_preview_panel
 	# increment gravity counter
 	lw  $t1, GRAVITY_COUNTER
 	addi $t1, $t1, 1
@@ -1321,7 +1435,7 @@ restart_or_quit:
     
     # reset game logic to restart game
     jal initialize_game_space
-    la $a0, ACTIVE_COLUMN
+    jal init_queue
     jal generate_drop_column
     # reset variables
     sw $zero, GRAVITY_COUNTER
