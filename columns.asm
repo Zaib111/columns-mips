@@ -124,7 +124,7 @@ start_game:
     j game_loop
     j Exit
 
-# intialize column queue
+# intialize column queue with random colours
 init_queue:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -427,17 +427,6 @@ end_shift:
     jal generate_random_color
     la $t0, NEXT_COLUMNS
     sw $v0, 56($t0)
-    
-    # lw $a0, 0($sp)
-    # sw $s0, 8($a0)
-    # sw $s1, 12($a0)
-    # sw $s2, 16($a0)
-    # # initialize to default position 
-    # addi $t3, $zero, WIDTH
-    # srl $t3, $t3, 2
-    # sw $t3, 0($a0)
-    # addi $t5, $zero, 1
-    # sw $t5, 4($a0)
     
     lw $ra, 0($sp)
     addi $sp, $sp, 4
@@ -1365,7 +1354,6 @@ skip_gravity:
 
 
 game_over:
-    # shahmeer you fill in here
     # play sound
     li $v0, 31
     li $a0, 60    
