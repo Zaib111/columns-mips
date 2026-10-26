@@ -1,8 +1,8 @@
 ################# CSC258 Assembly Final Project ###################
 # This file contains our implementation of Columns.
 #
-# Student 1: Victor Li, 1010863978
-# Student 2: Shahmeer Khan, 1011049410
+# Student 1: Victor Li
+# Student 2: Shahmeer Khan
 #
 # We assert that the code submitted here is entirely our own 
 # creation, and will indicate otherwise when it is not.
